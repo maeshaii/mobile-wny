@@ -1,21 +1,9 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
+import Constants from 'expo-constants';
 
-// Base URL configuration for different environments
-const getBaseURL = () => {
-  // For Android emulator, use 10.0.2.2
-  // For iOS simulator, use localhost
-  // For physical devices with Expo Go, use your computer's IP address
-  if (__DEV__) {
-    // For Expo Go on physical devices, use your computer's IP address
-    return 'http://192.168.254.135:8000'; // Your computer's IP address
-    // return 'http://10.0.2.2:8000'; // Android emulator
-    // return 'http://localhost:8000'; // iOS simulator
-  }
-  return 'http://127.0.0.1:8000'; // Production
-}; 
-
-const API_BASE_URL = getBaseURL();
+// Use API_BASE_URL from environment variables if available
+const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || process.env.API_BASE_URL || 'http://192.168.254.135:8000';
 
 export const loginUser = async (acc_username: string, acc_password: string) => {
   try {

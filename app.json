@@ -38,6 +38,9 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "API_BASE_URL": "https://3af65afdcd73.ngrok-free.app"
     }
   }
 }
