@@ -19,9 +19,11 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack initialRouteName="login">
-        <Stack.Screen name="login" options={{ headerShown: false }} />
-        <Stack.Screen name="dashboard" options={{ title: 'Dashboard', headerShown: false }} />
+      <Stack initialRouteName="login/login">
+        <Stack.Screen name="login/login" options={{ headerShown: false }} />
+        <Stack.Screen name="homepage/home" options={{ title: 'homepage', headerShown: false }} />
+        <Stack.Screen name="posts/post" options={{ title: 'post', headerShown: false }} />
+        <Stack.Screen name="notifications/notification" options={{ title: 'notification', headerShown: false }} />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>

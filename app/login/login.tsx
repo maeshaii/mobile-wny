@@ -1,6 +1,18 @@
 import React, { useState } from 'react';
-import { View, TextInput, TouchableOpacity, Text, StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Modal } from 'react-native';
-import { loginUser } from '../services/api';
+import {
+  View,
+  TextInput,
+  TouchableOpacity,
+  Text,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Modal,
+  ImageBackground,
+} from 'react-native';
+import { loginUser } from '../../services/api';
 import { useRouter } from 'expo-router';
 
 export default function LoginScreen() {
@@ -14,7 +26,6 @@ export default function LoginScreen() {
   const formatDateInput = (text: string) => {
     // Remove all non-digits
     const cleaned = text.replace(/\D/g, '');
-    
     // Format as MM/DD/YYYY
     if (cleaned.length <= 2) {
       return cleaned;
@@ -47,7 +58,7 @@ export default function LoginScreen() {
         const apiDate = `${parts[2]}-${parts[0]}-${parts[1]}`;
         const data = await loginUser(ctuId.trim(), apiDate);
         if (data.user && data.user.account_type && data.user.account_type.user) {
-          router.replace('/dashboard');
+          router.replace('/homepage/home');
         } else {
           setError('Only alumni accounts can access the mobile app');
         }
@@ -111,108 +122,130 @@ export default function LoginScreen() {
   );
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    <ImageBackground
+      source={require('../../assets/images/ctu.jpg')}
+      style={styles.background}
+      blurRadius={3}
     >
-      <View style={styles.content}>
-        <Text style={styles.title}>Welcome{'\n'}Technologist</Text>
-        <Text style={styles.subtitle}>Connect & Collaborate</Text>
-        <View style={styles.form}>
-          <Text style={styles.label}>CTU ID</Text>
-          <TextInput
-            style={[styles.input, error && styles.inputError]}
-            placeholder="Enter your CTU ID"
-            value={ctuId}
-            onChangeText={(text) => {
-              setCtuId(text);
-              clearError();
-            }}
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!loading}
-          />
-          <Text style={styles.label}>Birthdate</Text>
-          <View style={styles.dateInputContainer}>
+      <View style={styles.overlay} />
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <View style={styles.innerContent}>
+          <Text style={styles.title}>Welcome</Text>
+          <Text style={styles.subtitle}>Technologist</Text>
+          <Text style={styles.tagline}>Connect & Collaborate</Text>
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>CTU ID</Text>
             <TextInput
-              style={[styles.dateInput, error && styles.inputError]}
-              placeholder="MM/DD/YYYY"
-              value={birthdate}
-              onChangeText={handleDateChange}
-              keyboardType="numeric"
-              maxLength={10}
+              style={[styles.input, error && styles.inputError]}
+              placeholder="Enter your CTU ID"
+              placeholderTextColor="#ddd"
+              value={ctuId}
+              onChangeText={(text) => {
+                setCtuId(text);
+                clearError();
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
               editable={!loading}
             />
+            <Text style={styles.label}>Birthdate</Text>
+            <View style={styles.dateInputContainer}>
+              <TextInput
+                style={[styles.input, error && styles.inputError, { flex: 1 }]}
+                placeholder="MM/DD/YYYY"
+                placeholderTextColor="#ddd"
+                value={birthdate}
+                onChangeText={handleDateChange}
+                keyboardType="numeric"
+                maxLength={10}
+                editable={!loading}
+              />
+              <TouchableOpacity
+                style={styles.calendarIcon}
+                onPress={() => setShowDatePicker(true)}
+                disabled={loading}
+              >
+                <Text style={styles.calendarIconText}>📅</Text>
+              </TouchableOpacity>
+            </View>
+            <DatePickerModal />
+            {error ? (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            ) : null}
             <TouchableOpacity
-              style={styles.calendarIcon}
-              onPress={() => setShowDatePicker(true)}
+              style={[styles.button, loading && styles.buttonDisabled]}
+              onPress={handleLogin}
               disabled={loading}
             >
-              <Text style={styles.calendarIconText}>📅</Text>
+              {loading ? (
+                <ActivityIndicator color="#1e3a8a" size="small" />
+              ) : (
+                <Text style={styles.buttonText}>Log In</Text>
+              )}
             </TouchableOpacity>
           </View>
-          <DatePickerModal />
-          {error ? (
-            <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          ) : null}
-          <TouchableOpacity 
-            style={[styles.loginButton, loading && styles.loginButtonDisabled]} 
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="white" size="small" />
-            ) : (
-              <Text style={styles.loginButtonText}>Log In</Text>
-            )}
-          </TouchableOpacity>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: 'rgba(30, 58, 138, 0.7)',
-  },
-  content: {
+  background: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 45, 98, 0.5)',
+  },
+  container: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  innerContent: {
+    width: '80%',
+    alignItems: 'center',
   },
   title: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: 'bold',
-    color: 'white',
-    textAlign: 'center',
-    marginBottom: 8,
+    color: '#fff',
   },
   subtitle: {
-    fontSize: 16,
-    color: 'white',
-    textAlign: 'center',
-    marginBottom: 40,
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#fff',
   },
-  form: {
+  tagline: {
+    fontSize: 14,
+    color: '#fff',
+    marginBottom: 30,
+  },
+  inputContainer: {
     width: '100%',
-    maxWidth: 300,
+    marginBottom: 20,
   },
   label: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
+    color: '#fff',
+    fontSize: 14,
+    marginBottom: 5,
     marginTop: 16,
   },
   input: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 20,
+    paddingHorizontal: 15,
+    height: 40,
+    marginBottom: 10,
     fontSize: 16,
     borderWidth: 2,
     borderColor: 'transparent',
@@ -221,19 +254,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  dateInput: {
-    flex: 1,
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
   calendarIcon: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 20,
+    padding: 10,
     marginLeft: 8,
     justifyContent: 'center',
     alignItems: 'center',
@@ -257,11 +281,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
   },
-  loginButton: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 24,
+  button: {
+    backgroundColor: '#fff',
+    paddingVertical: 10,
+    paddingHorizontal: 40,
+    borderRadius: 20,
+    marginBottom: 20,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -269,13 +294,22 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  loginButtonDisabled: {
+  buttonDisabled: {
     opacity: 0.6,
   },
-  loginButtonText: {
-    color: '#1e3a8a',
-    fontSize: 18,
+  buttonText: {
+    fontSize: 16,
     fontWeight: 'bold',
+    color: '#000',
+  },
+  signupText: {
+    color: '#fff',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  signupLink: {
+    fontWeight: 'bold',
+    textDecorationLine: 'underline',
   },
   modalOverlay: {
     flex: 1,
