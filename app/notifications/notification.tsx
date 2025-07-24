@@ -48,6 +48,7 @@ const notificationsData: NotificationItem[] = [
 ];
 
 const NotificationScreen = () => {
+    const [selectedFilter, setSelectedFilter] = useState<'All' | 'Unread'>('All');
     const router = useRouter();
 
     return (
@@ -65,14 +66,19 @@ const NotificationScreen = () => {
                 data={notificationsData}
                 keyExtractor={(_, index) => index.toString()}
                 renderItem={({ item }) => (
-                    <View style={styles.notification}>
+                    <TouchableOpacity
+                        style={styles.notification}
+                        onPress={() => {
+                            if (item.name === 'TRACKER') router.push('/forms/forms');
+                        }}
+                    >
                         <Image source={item.avatarImage} style={styles.avatar} />
                         <View style={styles.messageBox}>
                             <Text style={styles.name}>{item.name}</Text>
                             <Text style={styles.message}>{item.message}</Text>
                         </View>
                         <Text style={styles.date}>{item.date}</Text>
-                    </View>
+                    </TouchableOpacity>
                 )}
                 contentContainerStyle={{ paddingBottom: 20 }}
             />

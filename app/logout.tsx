@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, Text, StyleSheet, Alert } from 'react-native';
 import { logoutUser } from '../services/api';
 import { useRouter } from 'expo-router';
 
@@ -7,11 +7,21 @@ export default function LogoutScreen() {
   const router = useRouter();
 
   useEffect(() => {
-    const doLogout = async () => {
-      await logoutUser();
-      router.replace('/login/login');
-    };
-    doLogout();
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        { text: 'Cancel', style: 'cancel', onPress: () => router.back() },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: async () => {
+            await logoutUser();
+            router.replace('/login/login');
+          },
+        },
+      ]
+    );
   }, []);
 
   return (

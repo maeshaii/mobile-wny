@@ -101,9 +101,6 @@ const HomeScreen = () => {
       {/* Header with logout button */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Home</Text>
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutButtonText}>Logout</Text>
-        </TouchableOpacity>
       </View>
       
 

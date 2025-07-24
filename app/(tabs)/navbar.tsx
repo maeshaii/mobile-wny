@@ -8,11 +8,6 @@ const NavBar = () => {
 
   return (
     <View style={styles.navBarContainer}>
-      {/* Search Bar */}
-      <View style={styles.searchBar}>
-        <FontAwesome name="search" size={16} color="black" style={styles.searchIcon} />
-        <TextInput placeholder="Search..." style={styles.searchInput} />
-      </View>
 
       {/* Navigation Icons */}
       <View style={styles.navBar}>
@@ -20,15 +15,19 @@ const NavBar = () => {
           <FontAwesome name="home" size={24} color="white" />
         </TouchableOpacity>
 
+        <TouchableOpacity onPress={() => router.push('/search/search')}>
+        <FontAwesome name="search" size={16} color="white" style={styles.searchIcon} />
+      </TouchableOpacity>
+
         <TouchableOpacity onPress={() => router.push('/notifications/notification')}>
           <FontAwesome name="bell" size={24} color="white" />
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push('/messages')}>
+        <TouchableOpacity onPress={() => router.push('/messages/message')}>
           <MaterialIcons name="email" size={24} color="white" />
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.push('/profile')}>
+        <TouchableOpacity onPress={() => router.push('/profile/profiletab')}>
           <Feather name="user" size={24} color="white" />
           <View style={styles.badge} />
         </TouchableOpacity>
@@ -44,22 +43,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#D9D9D9',
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    height: 35,
-    marginBottom: 10,
+    paddingTop: 60,
   },
   searchIcon: {
     marginRight: 5,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
   },
   navBar: {
     flexDirection: 'row',
