@@ -186,7 +186,7 @@ export const sendReminder = async () => {
 export const getPosts = async () => {
   try {
     const response = await api.get('/api/posts/');
-    return response.data;
+    return response.data.posts || []; 
   } catch (error) {
     console.error('Error fetching posts:', error);
     throw error;

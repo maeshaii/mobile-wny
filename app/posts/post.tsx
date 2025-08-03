@@ -37,12 +37,14 @@ export default function PostScreen() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [userInfo, categoriesData] = await Promise.all([
+        const [userInfo, categoriesResponse] = await Promise.all([
           getUserInfo(),
           getPostCategories()
         ]);
         
         setUser(userInfo);
+        // Extract categories from the response
+        const categoriesData = categoriesResponse.categories || [];
         setCategories(categoriesData);
         
         // Set default category to personal (assuming personal has post_cat_id = 4)
