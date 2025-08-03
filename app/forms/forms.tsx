@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Platform,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { Picker } from '@react-native-picker/picker';
@@ -19,6 +20,7 @@ import type {} from '@react-native-picker/picker';
 import type {} from 'react-native-radio-buttons-group';
 import { useNavigation } from '@react-navigation/native';
 import { FontAwesome } from '@expo/vector-icons';
+import { getTrackerQuestions, submitTrackerResponse } from '../../services/api';
 
 type FileAsset = {
   name: string;
@@ -66,6 +68,11 @@ export default function TrackerForm() {
     file: null as FileAsset | null,
   });
 
+  const [questions, setQuestions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const navigation = useNavigation();
   
   const [genderOptions, setGenderOptions] = useState<RadioButtonProps[]>([
@@ -89,13 +96,53 @@ export default function TrackerForm() {
     freelance: false,
   });
 
+  // Fetch questions from API
+  useEffect(() => {
+    const fetchQuestions = async () => {
+      try {
+        setLoading(true);
+        const data = await getTrackerQuestions();
+        setQuestions(data);
+        setError(null);
+      } catch (error) {
+        console.error('Failed to fetch questions:', error);
+        setError('Failed to load form questions');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchQuestions();
+  }, []);
+
   const handleChange = (key: keyof typeof form, value: any) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleSubmit = () => {
-    console.log('Submitted data:', form);
-    Alert.alert('Submitted!', 'Your response has been recorded.');
+  // Submit form with API integration
+  const handleSubmit = async () => {
+    try {
+      setSubmitting(true);
+      console.log('Submitting data:', form);
+      
+      // Prepare form data for submission
+      const formData = {
+        ...form,
+        // Add any additional fields needed by your backend
+        submitted_at: new Date().toISOString(),
+      };
+
+      await submitTrackerResponse(formData);
+      Alert.alert('Success', 'Form submitted successfully!');
+      
+      // Optionally navigate back or clear form
+      navigation.goBack();
+    } catch (error) {
+      console.error('Failed to submit form:', error);
+      Alert.alert('Error', 'Failed to submit form. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const [hasAwards, setHasAwards] = useState('No');
@@ -145,7 +192,15 @@ export default function TrackerForm() {
         </TouchableOpacity>
         <Text style={styles.topBarTitle}>GRADUATE TRACER SURVEY – CTU MAIN</Text>
       </View>
-      <ScrollView contentContainerStyle={styles.container}>
+      
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#fff" />
+          <Text style={styles.loadingText}>Loading form questions...</Text>
+          {error && <Text style={styles.errorText}>{error}</Text>}
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>To our Dear Graduates,</Text>
         <Text style={styles.sectionDescription}>Kindly complete this questionnaire accurately and truthfully. Your responses will be used for research purposes to assess employability and, ultimately, improve the curriculum programs offered at Cebu Technological University (CTU). Rest assured that your answers to this survey will be treated with the utmost confidentiality.</Text>
@@ -721,10 +776,22 @@ export default function TrackerForm() {
         />
     </View>
 
-      <TouchableOpacity style={styles.button} onPress={handleSubmit}>
-        <Text style={styles.buttonText}>Submit</Text>
+      <TouchableOpacity 
+        style={[styles.button, submitting && styles.buttonDisabled]} 
+        onPress={handleSubmit}
+        disabled={submitting}
+      >
+        {submitting ? (
+          <View style={styles.buttonContent}>
+            <ActivityIndicator size="small" color="#005c99" />
+            <Text style={styles.buttonText}>Submitting...</Text>
+          </View>
+        ) : (
+          <Text style={styles.buttonText}>Submit</Text>
+        )}
       </TouchableOpacity>
     </ScrollView>
+    )}
     </View>
   );
 }
@@ -817,6 +884,14 @@ const styles = StyleSheet.create({
     marginTop: 24,
     marginBottom: 30,
   },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   buttonText: {
     color: '#005c99',
     fontWeight: 'bold',
@@ -894,6 +969,22 @@ uploadButtonText: {
     flex: 1,
     textAlign: 'center',
     marginRight: 30, // to balance the back arrow
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#1C4E80',
+  },
+  loadingText: {
+    color: '#fff',
+    marginTop: 10,
+    fontSize: 16,
+  },
+  errorText: {
+    color: '#ff6b6b',
+    marginTop: 10,
+    fontSize: 14,
   },
 
 });

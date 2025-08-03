@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity, TextInput, ScrollView, Modal, ActivityIndicator, Alert } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
-import { getUserInfo } from '../../services/api';
+import { getUserInfo, updateProfile } from '../../services/api';
 import { useRouter } from 'expo-router';
 
 const profilePic = require('../../assets/images/sample_pic.jpg');
@@ -139,10 +139,15 @@ export default function ProfilePage() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
               <TouchableOpacity
                 style={[styles.modalBtn, { backgroundColor: '#174f84' }]}
-                onPress={() => {
-                  setUser((prev) => prev ? { ...prev, bio: editBio } : prev);
-                  setEditModalVisible(false);
-                  Alert.alert('Bio updated (not saved to backend)');
+                onPress={async () => {
+                  try {
+                    await updateProfile(editBio, user.profile_pic);
+                    setUser((prev) => prev ? { ...prev, bio: editBio } : prev);
+                    setEditModalVisible(false);
+                    Alert.alert('Profile updated!');
+                  } catch (error) {
+                    Alert.alert('Error', 'Failed to update profile');
+                  }
                 }}
               >
                 <Text style={{ color: '#fff' }}>Save</Text>

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Image, ActivityIndicator } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
 import NavBar from '../(tabs)/navbar';
 import { useRouter } from 'expo-router';
+import { getNotifications } from '../../services/api';
 
 interface NotificationItem {
     name: string;
@@ -14,7 +15,8 @@ interface NotificationItem {
 
 const samplePic = require('../../assets/images/sample_pic.jpg');
 
-const notificationsData: NotificationItem[] = [
+// Fallback data in case API fails
+const fallbackNotificationsData: NotificationItem[] = [
     {
         name: 'TRACKER',
         message: 'Lorem ipsum dolor sit amet. Quo asperiores enim ut veniamrepudiandae eum quisquam voluptatem',
@@ -49,7 +51,59 @@ const notificationsData: NotificationItem[] = [
 
 const NotificationScreen = () => {
     const [selectedFilter, setSelectedFilter] = useState<'All' | 'Unread'>('All');
+    const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const router = useRouter();
+
+    // Fetch notifications from API
+    useEffect(() => {
+        const fetchNotifications = async () => {
+            try {
+                setLoading(true);
+                const data = await getNotifications();
+                
+                // Transform backend data to match your interface
+                // Adjust this based on your actual backend response structure
+                const transformedData = data.map((notification: any) => ({
+                    name: notification.title || notification.name || 'Notification',
+                    message: notification.message || notification.content || 'No message',
+                    date: notification.created_at || notification.date || new Date().toLocaleDateString(),
+                    avatarImage: samplePic, // You can add profile images later
+                    read: notification.read || false,
+                }));
+                
+                setNotifications(transformedData);
+                setError(null);
+            } catch (error) {
+                console.error('Failed to fetch notifications:', error);
+                setError('Failed to load notifications');
+                // Use fallback data if API fails
+                setNotifications(fallbackNotificationsData);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchNotifications();
+    }, []);
+
+    // Filter notifications based on selected filter
+    const filteredNotifications = selectedFilter === 'All' 
+        ? notifications 
+        : notifications.filter(item => !item.read);
+
+    if (loading) {
+        return (
+            <View style={styles.container}>
+                <NavBar />
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color="#1e3a8a" />
+                    <Text style={styles.loadingText}>Loading notifications...</Text>
+                </View>
+            </View>
+        );
+    }
 
     return (
         <View style={styles.container}>
@@ -57,13 +111,13 @@ const NotificationScreen = () => {
             {/* Notifications Header */}
             <View style={styles.notificationsHeader}>
                 <Text style={styles.notificationsTitle}>Notifications</Text>
-                
+                {error && <Text style={styles.errorText}>{error}</Text>}
             </View>
             {/* Earlier Section */}
             <Text style={styles.earlier}>Earlier</Text>
             {/* Notifications List */}
             <FlatList
-                data={notificationsData}
+                data={filteredNotifications}
                 keyExtractor={(_, index) => index.toString()}
                 renderItem={({ item }) => (
                     <TouchableOpacity
@@ -116,6 +170,11 @@ const styles = StyleSheet.create({
         color: '#222',
         paddingLeft: 5,
     },
+    errorText: {
+        color: 'red',
+        fontSize: 14,
+        marginLeft: 5,
+    },
     earlier: {
         fontSize: 16,
         fontWeight: '500',
@@ -162,6 +221,17 @@ const styles = StyleSheet.create({
         color: '#888',
         marginLeft: 10,
         alignSelf: 'flex-start',
+    },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    loadingText: {
+        marginTop: 10,
+        fontSize: 16,
+        color: '#555',
     },
 });
 
