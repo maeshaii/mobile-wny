@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity, TextInput, ScrollView, Modal, ActivityIndicator, Alert } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
-import { getUserInfo, updateProfile } from '../../services/api';
+import { getUserInfo, updateProfile, getPosts } from '../../services/api';
 import { useRouter } from 'expo-router';
 
 const profilePic = require('../../assets/images/sample_pic.jpg');
@@ -13,23 +13,11 @@ interface UserProfile {
   profile_pic: any;
 }
 
-const dummyPosts = [
-  {
-    id: 1,
-    content: 'Lorem ipsum dolor sit amet. Quo asperiores enim ut veniam repudiandae eum quisquam voluptatem non dolore veritatis eos quia suscipit sed facere alias nam voluptate quia. Ut neque ipsam sed explicabo nemo ut',
-    date: '2d',
-    followers: '3,000,000',
-  },
-  {
-    id: 2,
-    content: 'Lorem ipsum dolor sit amet. Quo asperiores enim ut veniam repudiandae eum quisquam voluptatem non dolore veritatis eos quia suscipit sed facere alias nam voluptate quia. Ut neque ipsam sed explicabo nemo ut',
-    date: '2d',
-    followers: '3,000,000',
-  },
-];
+
 
 export default function ProfilePage() {
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editBio, setEditBio] = useState('');
@@ -39,13 +27,18 @@ export default function ProfilePage() {
     const loadUser = async () => {
       setLoading(true);
       try {
-        const userInfo = await getUserInfo();
+        const [userInfo, postsData] = await Promise.all([
+          getUserInfo(),
+          getPosts()
+        ]);
+        
         const fallbackUser: UserProfile = {
           name: 'Rhodjien Mary P. Caratao',
           username: '@angelaboloc',
           bio: 'Bio',
           profile_pic: profilePic,
         };
+        
         setUser(userInfo ? {
           name: userInfo.name || fallbackUser.name,
           username: userInfo.username || fallbackUser.username,
@@ -53,6 +46,16 @@ export default function ProfilePage() {
           profile_pic: userInfo.profile_pic || fallbackUser.profile_pic,
         } : fallbackUser);
         setEditBio(userInfo?.bio || 'Bio');
+        
+        // Filter posts to show only current user's posts
+        console.log('All posts:', postsData);
+        console.log('User info:', userInfo);
+        const userPosts = postsData.filter((post: any) => {
+          console.log('Post user ID:', post.user?.user_id, 'Current user ID:', userInfo?.id);
+          return post.user?.user_id === userInfo?.id;
+        });
+        console.log('User posts:', userPosts);
+        setPosts(userPosts);
       } catch (e) {
         setUser({
           name: 'Angel Khyla Marie Aboloc',
@@ -108,23 +111,50 @@ export default function ProfilePage() {
         </View>
       </View>
       {/* Posts */}
-      {dummyPosts.map((post) => (
-        <View key={post.id} style={styles.postCard}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-            <Image source={user.profile_pic} style={styles.avatar} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.postName}>{user.name}</Text>
-              <Text style={styles.postMeta}>{post.followers} followers • {post.date} • <FontAwesome name="globe" size={12} color="#888" /></Text>
+      {posts.length === 0 ? (
+        <View style={styles.noPostsContainer}>
+          <Text style={styles.noPostsText}>No posts yet. Start sharing your thoughts!</Text>
+        </View>
+      ) : (
+        posts.map((post: any) => (
+          <View key={post.post_id} style={styles.postCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+              <Image 
+                source={{ uri: post.user?.profile_pic || user.profile_pic }} 
+                style={styles.avatar} 
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.postName}>{post.user?.f_name} {post.user?.l_name}</Text>
+                <Text style={styles.postMeta}>
+                  {new Date(post.created_at).toLocaleDateString()} • 
+                  <FontAwesome name="globe" size={12} color="#888" />
+                </Text>
+              </View>
+            </View>
+            {post.post_title && (
+              <Text style={styles.postTitle}>{post.post_title}</Text>
+            )}
+            <Text style={styles.postContent}>{post.post_content}</Text>
+            {post.post_image && (
+              <Image source={{ uri: post.post_image }} style={styles.postImage} />
+            )}
+            <View style={styles.postActions}>
+              <TouchableOpacity style={styles.actionBtn}>
+                <FontAwesome name="thumbs-o-up" size={16} color="#888" />
+                <Text style={styles.actionText}>{post.likes_count || 0}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionBtn}>
+                <FontAwesome name="comment-o" size={16} color="#888" />
+                <Text style={styles.actionText}>{post.comments_count || 0}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.actionBtn}>
+                <FontAwesome name="retweet" size={16} color="#888" />
+                <Text style={styles.actionText}>{post.reposts_count || 0}</Text>
+              </TouchableOpacity>
             </View>
           </View>
-          <Text style={styles.postContent}>{post.content}</Text>
-          <View style={styles.postActions}>
-            <TouchableOpacity style={styles.actionBtn}><FontAwesome name="thumbs-o-up" size={16} color="#888" /><Text style={styles.actionText}>Like</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtn}><FontAwesome name="comment-o" size={16} color="#888" /><Text style={styles.actionText}>Comment</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtn}><FontAwesome name="retweet" size={16} color="#888" /><Text style={styles.actionText}>Repost</Text></TouchableOpacity>
-          </View>
-        </View>
-      ))}
+        ))
+      )}
       {/* Edit Modal */}
       <Modal visible={editModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
@@ -389,5 +419,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 4,
     zIndex: 2,
+  },
+  noPostsContainer: {
+    alignItems: 'center',
+    padding: 40,
+  },
+  noPostsText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+  },
+  postTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#174f84',
+    marginBottom: 8,
+  },
+  postImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
+    marginTop: 10,
+    marginBottom: 10,
   },
 });

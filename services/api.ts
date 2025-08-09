@@ -88,9 +88,9 @@ export const logoutUser = async () => {
 };
 
 // Notifications API
-export const getNotifications = async () => {
+export const getNotifications = async (userId: number) => {
   try {
-    const response = await api.get('/api/notifications/');
+    const response = await api.get(`/api/notifications/?user_id=${userId}`);
     return response.data;
   } catch (error) {
     console.error('Error fetching notifications:', error);

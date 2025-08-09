@@ -4,6 +4,7 @@ import { FontAwesome } from '@expo/vector-icons';
 import NavBar from '../(tabs)/navbar';
 import { useRouter } from 'expo-router';
 import { getNotifications } from '../../services/api';
+import { getUserInfo } from '../../services/api';
 
 interface NotificationItem {
     name: string;
@@ -11,6 +12,8 @@ interface NotificationItem {
     date: string;
     avatarImage?: any;
     read?: boolean;
+    notif_type?: string; // Added for new logic
+    subject?: string; // Added for new logic
 }
 
 const samplePic = require('../../assets/images/sample_pic.jpg');
@@ -61,17 +64,51 @@ const NotificationScreen = () => {
         const fetchNotifications = async () => {
             try {
                 setLoading(true);
-                const data = await getNotifications();
+                const user = await getUserInfo();
+                console.log('User info:', user); // Debug log
+                
+                if (!user) {
+                    setError('User not found - please login again');
+                    setNotifications(fallbackNotificationsData);
+                    setLoading(false);
+                    return;
+                }
+                
+                // Check for user ID in different possible fields
+                const userId = user.id || user.user_id || user.userId;
+                console.log('User ID:', userId); // Debug log
+                
+                if (!userId) {
+                    setError('User ID not found - please login again');
+                    setNotifications(fallbackNotificationsData);
+                    setLoading(false);
+                    return;
+                }
+                
+                const data = await getNotifications(userId);
                 
                 // Transform backend data to match your interface
                 // Adjust this based on your actual backend response structure
-                const transformedData = data.map((notification: any) => ({
-                    name: notification.title || notification.name || 'Notification',
-                    message: notification.message || notification.content || 'No message',
-                    date: notification.created_at || notification.date || new Date().toLocaleDateString(),
-                    avatarImage: samplePic, // You can add profile images later
-                    read: notification.read || false,
-                }));
+                const transformedData = data.notifications ? data.notifications.map((notification: any) => {
+                    // Determine avatar image based on notification type
+                    let avatarImage = samplePic; // Default fallback
+                    
+                    if (notification.type && notification.type.toLowerCase() === 'ccict') {
+                        avatarImage = require('../../assets/images/ccict_logo.jpg');
+                    } else if (notification.type && ['like', 'comment', 'repost'].includes(notification.type.toLowerCase())) {
+                        avatarImage = samplePic; 
+                    }
+                    
+                    return {
+                        name: notification.type || notification.title || notification.name || 'CCICT',
+                        message: notification.content || notification.message || 'No message',
+                        date: notification.date || notification.created_at || new Date().toLocaleDateString(),
+                        avatarImage: avatarImage,
+                        read: notification.read || false,
+                        notif_type: notification.type,
+                        subject: notification.subject,
+                    };
+                }) : [];
                 
                 setNotifications(transformedData);
                 setError(null);
@@ -84,7 +121,6 @@ const NotificationScreen = () => {
                 setLoading(false);
             }
         };
-
         fetchNotifications();
     }, []);
 
@@ -123,7 +159,14 @@ const NotificationScreen = () => {
                     <TouchableOpacity
                         style={styles.notification}
                         onPress={() => {
-                            if (item.name === 'TRACKER') router.push('/forms/forms');
+                            // Detect tracker form notification by notif_type, subject, or name
+                            const isTrackerNotif = (item.notif_type && item.notif_type.toLowerCase() === 'ccict') ||
+                                                   (item.subject && item.subject.toLowerCase().includes('tracker form reminder')) ||
+                                                   (item.name && (item.name.toLowerCase() === 'tracker' || item.name.toLowerCase() === 'ccict'));
+                            if (isTrackerNotif) {
+                                // Optionally, pass user_id or other params if needed
+                                router.push('/forms/forms');
+                            }
                         }}
                     >
                         <Image source={item.avatarImage} style={styles.avatar} />

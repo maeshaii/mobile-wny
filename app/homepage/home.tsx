@@ -316,10 +316,6 @@ const HomeScreen = () => {
                   {repostCount > 0 ? repostCount : ''} Repost
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.actionIcon}>
-                <FontAwesome name="send-o" size={16} color="#555" />
-                <Text style={styles.actionText}>Send</Text>
-              </TouchableOpacity>
             </View>
           </View>
             );

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Image, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Image, StyleSheet, Alert, ActivityIndicator, Modal, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { createPost, getUserInfo, getPostCategories } from '../../services/api';
+import * as FileSystem from 'expo-file-system';
 // @ts-ignore
 import * as ImagePicker from 'expo-image-picker';
 
@@ -31,6 +32,7 @@ export default function PostScreen() {
   const [categories, setCategories] = useState<PostCategory[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
 
   // Fetch user info and categories on component mount
   useEffect(() => {
@@ -45,12 +47,16 @@ export default function PostScreen() {
         setUser(userInfo);
         // Extract categories from the response
         const categoriesData = categoriesResponse.categories || [];
+        console.log('Categories response:', categoriesResponse);
+        console.log('Categories data:', categoriesData);
         setCategories(categoriesData);
         
         // Set default category to personal (assuming personal has post_cat_id = 4)
         const personalCategory = categoriesData.find((cat: PostCategory) => cat.personal);
         if (personalCategory) {
           setSelectedCategory(personalCategory.post_cat_id);
+        } else {
+          console.log('No personal category found');
         }
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -95,13 +101,36 @@ export default function PostScreen() {
     try {
       setSubmitting(true);
       
+      // Handle image - convert local file to base64 if needed
+      let postImage = '';
+      if (selectedImage) {
+        if (selectedImage.startsWith('file://')) {
+          try {
+            // Convert local file to base64
+            const base64 = await FileSystem.readAsStringAsync(selectedImage, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+            postImage = `data:image/jpeg;base64,${base64}`;
+          } catch (error) {
+            console.error('Error converting image to base64:', error);
+            postImage = '';
+          }
+        } else {
+          postImage = selectedImage;
+        }
+      }
+      
       const postData = {
         post_title: postTitle.trim() || 'Untitled Post',
         post_content: postContent.trim(),
-        post_image: selectedImage || '',
+        post_image: postImage,
         post_cat_id: selectedCategory,
         type: 'personal', // You can make this dynamic based on category
       };
+
+      console.log('Submitting post data:', postData);
+      console.log('Selected category:', selectedCategory);
+      console.log('Categories available:', categories);
 
       await createPost(postData);
       
@@ -165,29 +194,72 @@ export default function PostScreen() {
         {/* Category Selection */}
         <View style={styles.categoryContainer}>
           <Text style={styles.categoryLabel}>Category:</Text>
-          <View style={styles.categoryButtons}>
-            {categories.map((category) => (
-              <TouchableOpacity
-                key={category.post_cat_id}
-                style={[
-                  styles.categoryButton,
-                  selectedCategory === category.post_cat_id && styles.selectedCategory
-                ]}
-                onPress={() => setSelectedCategory(category.post_cat_id)}
-              >
-                <Text style={[
-                  styles.categoryButtonText,
-                  selectedCategory === category.post_cat_id && styles.selectedCategoryText
-                ]}>
-                  {category.personal ? 'Personal' : 
-                   category.events ? 'Events' : 
-                   category.announcements ? 'Announcements' : 
-                   category.donation ? 'Donation' : 'Other'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <TouchableOpacity
+            style={styles.categoryDropdown}
+            onPress={() => setCategoryModalVisible(true)}
+          >
+            <Text style={styles.categoryDropdownText}>
+              {selectedCategory ? 
+                categories.find(cat => cat.post_cat_id === selectedCategory)?.personal ? 'Personal' :
+                categories.find(cat => cat.post_cat_id === selectedCategory)?.events ? 'Events' :
+                categories.find(cat => cat.post_cat_id === selectedCategory)?.announcements ? 'Announcements' :
+                categories.find(cat => cat.post_cat_id === selectedCategory)?.donation ? 'Donation' : 'Select Category'
+                : 'Select Category'}
+            </Text>
+            <FontAwesome name="chevron-down" size={16} color="#666" />
+          </TouchableOpacity>
         </View>
+
+        {/* Category Modal */}
+        <Modal
+          visible={categoryModalVisible}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setCategoryModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Select Category</Text>
+                <TouchableOpacity
+                  onPress={() => setCategoryModalVisible(false)}
+                  style={styles.closeButton}
+                >
+                  <Text style={styles.closeButtonText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.categoryList}>
+                {categories.map((category) => (
+                  <TouchableOpacity
+                    key={category.post_cat_id}
+                    style={[
+                      styles.categoryItem,
+                      selectedCategory === category.post_cat_id && styles.selectedCategoryItem
+                    ]}
+                    onPress={() => {
+                      console.log('Category selected:', category);
+                      setSelectedCategory(category.post_cat_id);
+                      setCategoryModalVisible(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.categoryItemText,
+                      selectedCategory === category.post_cat_id && styles.selectedCategoryItemText
+                    ]}>
+                      {category.personal ? 'Personal' : 
+                       category.events ? 'Events' : 
+                       category.announcements ? 'Announcements' : 
+                       category.donation ? 'Donation' : 'Other'}
+                    </Text>
+                    {selectedCategory === category.post_cat_id && (
+                      <FontAwesome name="check" size={16} color="#4B944D" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
 
         {/* Post Title */}
         <TextInput
@@ -233,6 +305,8 @@ export default function PostScreen() {
           </View>
         )}
       </View>
+      
+
     </View>
   );
 }
@@ -362,31 +436,80 @@ topBarButtonRight: {
     color: '#555',
     marginBottom: 5,
   },
-  categoryButtons: {
+  categoryDropdown: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-around',
-  },
-  categoryButton: {
-    backgroundColor: '#f0f0f0',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 15,
-    marginVertical: 5,
-    marginHorizontal: 5,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#eee',
+    padding: 12,
+    marginTop: 5,
   },
-  selectedCategory: {
-    backgroundColor: '#4B944D',
-    borderColor: '#4B944D',
-  },
-  categoryButtonText: {
-    fontSize: 14,
+  categoryDropdownText: {
+    fontSize: 16,
     color: '#333',
   },
-  selectedCategoryText: {
-    color: '#fff',
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    width: '80%',
+    maxHeight: '60%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  closeButton: {
+    padding: 5,
+  },
+  closeButtonText: {
+    fontSize: 20,
+    color: '#666',
+  },
+  categoryList: {
+    padding: 10,
+  },
+  categoryItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  selectedCategoryItem: {
+    backgroundColor: '#f8f9fa',
+  },
+  categoryItemText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  selectedCategoryItemText: {
+    color: '#4B944D',
+    fontWeight: 'bold',
   },
   titleInput: {
     backgroundColor: '#fff',
@@ -442,4 +565,5 @@ topBarButtonRight: {
   disabledButton: {
     opacity: 0.7,
   },
+
 });
