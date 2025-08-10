@@ -98,9 +98,11 @@ export const getNotifications = async (userId: number) => {
   }
 };
 
-export const deleteNotifications = async () => {
+export const deleteNotifications = async (notificationIds: number[]) => {
   try {
-    const response = await api.delete('/api/notifications/delete/');
+    const response = await api.post('/api/notifications/delete/', { 
+      notification_ids: notificationIds 
+    });
     return response.data;
   } catch (error) {
     console.error('Error deleting notifications:', error);
