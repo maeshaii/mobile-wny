@@ -11,16 +11,14 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import { Picker } from '@react-native-picker/picker';
 import RadioGroup from 'react-native-radio-buttons-group';
 import type { RadioButtonProps } from 'react-native-radio-buttons-group';
 // @ts-ignore
 import type {} from 'expo-document-picker';
-import type {} from '@react-native-picker/picker';
 import type {} from 'react-native-radio-buttons-group';
 import { useNavigation } from '@react-navigation/native';
 import { FontAwesome } from '@expo/vector-icons';
-import { getTrackerQuestions, submitTrackerResponse } from '../../services/api';
+import { getTrackerQuestions, getUserInfo, submitTrackerResponse } from '../../services/api';
 
 type FileAsset = {
   name: string;
@@ -73,6 +71,13 @@ export default function TrackerForm() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Dropdown states
+  const [showCourseDropdown, setShowCourseDropdown] = useState(false);
+  const [showEmploymentStatusDropdown, setShowEmploymentStatusDropdown] = useState(false);
+  const [showCurrentStatusDropdown, setShowCurrentStatusDropdown] = useState(false);
+  const [showYearsEmployedDropdown, setShowYearsEmployedDropdown] = useState(false);
+  const [showSalaryRangeDropdown, setShowSalaryRangeDropdown] = useState(false);
+
   const navigation = useNavigation();
   
   const [genderOptions, setGenderOptions] = useState<RadioButtonProps[]>([
@@ -122,26 +127,26 @@ export default function TrackerForm() {
   // Submit form with API integration
   const handleSubmit = async () => {
     try {
-      setSubmitting(true);
-      console.log('Submitting data:', form);
+      setSubmitting(true); // Add this line
       
-      // Prepare form data for submission
+      const user = await getUserInfo();
       const formData = {
-        ...form,
-        // Add any additional fields needed by your backend
+        user_id: user.id,
+        answers: JSON.stringify(form),
         submitted_at: new Date().toISOString(),
       };
-
+      
+      console.log('Submitting:', formData);
       await submitTrackerResponse(formData);
       Alert.alert('Success', 'Form submitted successfully!');
       
-      // Optionally navigate back or clear form
+      // Navigate back after success
       navigation.goBack();
     } catch (error) {
-      console.error('Failed to submit form:', error);
-      Alert.alert('Error', 'Failed to submit form. Please try again.');
+      console.error('Submit error:', error);
+      Alert.alert('Error', 'Failed to submit form');
     } finally {
-      setSubmitting(false);
+      setSubmitting(false); // Add this line
     }
   };
 
@@ -231,17 +236,24 @@ export default function TrackerForm() {
         />
 
         <Text style={styles.label}>3. Course Graduated </Text>
-        <View style={styles.pickerWrapper}>
-          <Picker
-            selectedValue={form.courseGraduated}
-            onValueChange={(itemValue: any) => handleChange('courseGraduated', itemValue)}
-            style={styles.picker}
-          >
-            <Picker.Item label="Select your course" value="" enabled={false} />
-            <Picker.Item label="Bachelor in Science in Information Technology" value="bsit" />
-            <Picker.Item label="Bachelor in Science in Information System" value="bsis" />
-            <Picker.Item label="Bachelor in Industrial Technology major in Computer Technology" value="bitct" />
-          </Picker>
+        <View style={styles.dropdownContainer}>
+          <TouchableOpacity style={styles.dropdown} onPress={() => setShowCourseDropdown(!showCourseDropdown)}>
+            <Text style={{ color: form.courseGraduated ? '#222' : '#aaa' }}>{form.courseGraduated || 'Select your course'}</Text>
+            <FontAwesome name="chevron-down" size={16} color="#222" style={{ marginLeft: 175 }} />
+          </TouchableOpacity>
+          {showCourseDropdown && (
+            <View style={styles.dropdownList}>
+              <TouchableOpacity style={styles.dropdownItem} onPress={() => { handleChange('courseGraduated', 'Bachelor in Science in Information Technology'); setShowCourseDropdown(false); }}>
+                <Text style={{ color: '#222' }}>Bachelor in Science in Information Technology</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.dropdownItem} onPress={() => { handleChange('courseGraduated', 'Bachelor in Science in Information System'); setShowCourseDropdown(false); }}>
+                <Text style={{ color: '#222' }}>Bachelor in Science in Information System</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.dropdownItem} onPress={() => { handleChange('courseGraduated', 'Bachelor in Industrial Technology major in Computer Technology'); setShowCourseDropdown(false); }}>
+                <Text style={{ color: '#222' }}>Bachelor in Industrial Technology major in Computer Technology</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
 
@@ -371,16 +383,21 @@ export default function TrackerForm() {
         />  
 
         <Text style={styles.label}>17. Status of your employment <Text style={{ fontStyle: 'italic' }}>(1st employer right after graduation)</Text></Text>
-        <View style={styles.pickerWrapper}>
-        <Picker
-            selectedValue={form.employmentStatus}
-            onValueChange={(itemValue: any) => handleChange('empstat1', itemValue)}
-            style={styles.picker}
-        >
-            <Picker.Item label="Select Employment Status" value="" enabled={false} />
-            <Picker.Item label="Permanent" value="permanent" />
-            <Picker.Item label="Temporary" value="temporary" />
-        </Picker>
+        <View style={styles.dropdownContainer}>
+          <TouchableOpacity style={styles.dropdown} onPress={() => setShowEmploymentStatusDropdown(!showEmploymentStatusDropdown)}>
+            <Text style={{ color: form.empstat1 ? '#222' : '#aaa' }}>{form.empstat1 || 'Select Employment Status'}</Text>
+            <FontAwesome name="chevron-down" size={16} color="#222" style={{ marginLeft: 130 }} />
+          </TouchableOpacity>
+          {showEmploymentStatusDropdown && (
+            <View style={styles.dropdownList}>
+              <TouchableOpacity style={styles.dropdownItem} onPress={() => { handleChange('empstat1', 'permanent'); setShowEmploymentStatusDropdown(false); }}>
+                <Text style={{ color: '#222' }}>Permanent</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.dropdownItem} onPress={() => { handleChange('empstat1', 'temporary'); setShowEmploymentStatusDropdown(false); }}>
+                <Text style={{ color: '#222' }}>Temporary</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         <Text style={styles.label}>18. Company Address <Text style={{ fontStyle: 'italic' }}>(1st employer right after graduation)</Text></Text>
@@ -487,16 +504,21 @@ export default function TrackerForm() {
         </View>
         
         <Text style={styles.label}>23. Status of your CURRENT Employment</Text>
-        <View style={styles.pickerWrapper}>
-        <Picker
-            selectedValue={form.employmentStatus}
-            onValueChange={(itemValue: any) => handleChange('currentStat', itemValue)}
-            style={styles.picker}
-        >
-            <Picker.Item label="Select Employment Status" value="" enabled={false} />
-            <Picker.Item label="Permanent" value="permanent" />
-            <Picker.Item label="Temporary" value="temporary" />
-        </Picker>
+        <View style={styles.dropdownContainer}>
+          <TouchableOpacity style={styles.dropdown} onPress={() => setShowCurrentStatusDropdown(!showCurrentStatusDropdown)}>
+            <Text style={{ color: form.currentStat ? '#222' : '#aaa' }}>{form.currentStat || 'Select Employment Status'}</Text>
+            <FontAwesome name="chevron-down" size={16} color="#222" style={{ marginLeft: 130 }} />
+          </TouchableOpacity>
+          {showCurrentStatusDropdown && (
+            <View style={styles.dropdownList}>
+              <TouchableOpacity style={styles.dropdownItem} onPress={() => { handleChange('currentStat', 'permanent'); setShowCurrentStatusDropdown(false); }}>
+                <Text style={{ color: '#222' }}>Permanent</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.dropdownItem} onPress={() => { handleChange('currentStat', 'temporary'); setShowCurrentStatusDropdown(false); }}>
+                <Text style={{ color: '#222' }}>Temporary</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         <Text style={styles.label}>24. Name of your CURRENT organization/employer. <Text style={{ fontStyle: 'italic' }}>(Please don't abbreviate)</Text></Text>
@@ -538,32 +560,46 @@ export default function TrackerForm() {
 
         <Text style={styles.label}>
         27. How long have you been employed? <Text style={{ fontStyle: 'italic' }}>(Current Employment)</Text></Text>
-        <View style={styles.pickerWrapper}>
-        <Picker
-            selectedValue={form.yearsEmployed}
-            onValueChange={(itemValue: any) => setForm((prev) => ({ ...prev, yearsEmployed: itemValue }))}
-            style={styles.picker}
-        >
-            <Picker.Item label="Select duration" value="" enabled={false}/>
-            <Picker.Item label="Less than 1 year" value="less_than_1" />
-            <Picker.Item label="More than one (1) year" value="more_than_1" />
-        </Picker>
+        <View style={styles.dropdownContainer}>
+          <TouchableOpacity style={styles.dropdown} onPress={() => setShowYearsEmployedDropdown(!showYearsEmployedDropdown)}>
+            <Text style={{ color: form.yearsEmployed ? '#222' : '#aaa' }}>{form.yearsEmployed || 'Select duration'}</Text>
+            <FontAwesome name="chevron-down" size={16} color="#222" style={{ marginLeft: 195}} />
+          </TouchableOpacity>
+          {showYearsEmployedDropdown && (
+            <View style={styles.dropdownList}>
+              <TouchableOpacity style={styles.dropdownItem} onPress={() => { handleChange('yearsEmployed', 'less_than_1'); setShowYearsEmployedDropdown(false); }}>
+                <Text style={{ color: '#222' }}>Less than 1 year</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.dropdownItem} onPress={() => { handleChange('yearsEmployed', 'more_than_1'); setShowYearsEmployedDropdown(false); }}>
+                <Text style={{ color: '#222' }}>More than one (1) year</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         <Text style={styles.label}>
         28. What is your current salary range? <Text style={{ fontStyle: 'italic' }}>(Current Employment)</Text></Text>
-        <View style={styles.pickerWrapper}>
-        <Picker
-            selectedValue={form.salaryRange}
-            onValueChange={(itemValue: any) => setForm((prev) => ({ ...prev, salaryRange: itemValue }))}
-            style={styles.picker}
-        >
-            <Picker.Item label="Select salary range" value="" enabled={false} />
-            <Picker.Item label="Below 10,000 Php" value="below_10k" />
-            <Picker.Item label="10,001 Php – 20,000 Php" value="10k_20k" />
-            <Picker.Item label="20,001 Php – 30,000 Php" value="20k_30k" />
-            <Picker.Item label="Above 30,000 Php" value="above_30k" />
-        </Picker>
+        <View style={styles.dropdownContainer}>
+          <TouchableOpacity style={styles.dropdown} onPress={() => setShowSalaryRangeDropdown(!showSalaryRangeDropdown)}>
+            <Text style={{ color: form.salaryRange ? '#222' : '#aaa' }}>{form.salaryRange || 'Select salary range'}</Text>
+            <FontAwesome name="chevron-down" size={16} color="#222" style={{ marginLeft: 170 }} />
+          </TouchableOpacity>
+          {showSalaryRangeDropdown && (
+            <View style={styles.dropdownList}>
+              <TouchableOpacity style={styles.dropdownItem} onPress={() => { handleChange('salaryRange', 'below_10k'); setShowSalaryRangeDropdown(false); }}>
+                <Text style={{ color: '#222' }}>Below 10,000 Php</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.dropdownItem} onPress={() => { handleChange('salaryRange', '10k_20k'); setShowSalaryRangeDropdown(false); }}>
+                <Text style={{ color: '#222' }}>10,001 Php – 20,000 Php</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.dropdownItem} onPress={() => { handleChange('salaryRange', '20k_30k'); setShowSalaryRangeDropdown(false); }}>
+                <Text style={{ color: '#222' }}>20,001 Php – 30,000 Php</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.dropdownItem} onPress={() => { handleChange('salaryRange', 'above_30k'); setShowSalaryRangeDropdown(false); }}>
+                <Text style={{ color: '#222' }}>Above 30,000 Php</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
         
         <Text style={styles.label}>29. CURRENT Employment Supporting Document </Text>
@@ -854,17 +890,6 @@ const styles = StyleSheet.create({
     borderColor: '#ccc',
     borderWidth: 1,
   },
-  pickerWrapper: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    borderColor: '#ccc',
-    borderWidth: 1,
-    marginBottom: 10,
-  },
-  picker: {
-    height: 50,
-    width: '100%',
-  },
   card: {
     backgroundColor: '#A5D8DD',
     borderRadius: 10,
@@ -985,6 +1010,44 @@ uploadButtonText: {
     color: '#ff6b6b',
     marginTop: 10,
     fontSize: 14,
+  },
+  dropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 38,
+    borderWidth: 1,
+    borderColor: '#eee',
+    marginTop: 2,
+    marginBottom: 10,
+  },
+  dropdownContainer: {
+    position: 'relative',
+    zIndex: 1000,
+  },
+  dropdownList: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#eee',
+    marginTop: 2,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+    zIndex: 1000,
+  },
+  dropdownItem: {
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  dropdownItemText: {
+    color: '#222',
   },
 
 });
