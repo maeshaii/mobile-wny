@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, ActivityIndicator, Modal } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
-import NavBar from '../(tabs)/navbar';
 import { useRouter } from 'expo-router';
-import { getUserInfo, logoutUser, getPosts, likePost, unlikePost, repostPost, deleteRepost, commentOnPost, getPostComments } from '../../services/api';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import NavBar from '../(tabs)/navbar';
+import { API_BASE_URL, commentOnPost, getPosts, getUserInfo, likePost, logoutUser, repostPost, unlikePost } from '../../services/api';
 
 interface Post {
   post_id: number;
@@ -226,7 +226,7 @@ const HomeScreen = () => {
       <View style={styles.postCard}>
         <View style={styles.postRow}>
           <Image
-              source={user?.profile_pic ? { uri: user.profile_pic } : require('../../assets/images/sample_pic.jpg')}
+              source={user?.profile_pic ? { uri: String(user.profile_pic).startsWith('http') || String(user.profile_pic).startsWith('data:') ? String(user.profile_pic) : `${API_BASE_URL}${user.profile_pic}` } : require('../../assets/images/sample_pic.jpg')}
             style={styles.avatar}
           />
             <TouchableOpacity
@@ -252,11 +252,28 @@ const HomeScreen = () => {
         ) : (
           posts.map((post) => {
             const userName = `${post.user?.f_name || ''} ${post.user?.l_name || ''}`.trim() || 'User';
-            const userAvatar = post.user?.profile_pic ? { uri: post.user.profile_pic } : require('../../assets/images/sample_pic.jpg');
-                          const isLiked = post.likes && post.likes.length > 0; // You might need to check if current user liked it
-              const likeCount = post.likes ? post.likes.length : 0;
-              const commentCount = post.comments ? post.comments.length : 0;
-              const repostCount = post.reposts_count || 0;
+            const userAvatar = post.user?.profile_pic 
+              ? { uri: String(post.user.profile_pic).startsWith('http') || String(post.user.profile_pic).startsWith('data:') ? String(post.user.profile_pic) : `${API_BASE_URL}${post.user.profile_pic}` }
+              : require('../../assets/images/sample_pic.jpg');
+            const isLiked = typeof (post as any).is_liked === 'boolean' ? (post as any).is_liked : Array.isArray((post as any).likes) && (post as any).likes.length > 0;
+            const likeCount = (post as any).likes_count ?? ((post as any).likes ? (post as any).likes.length : 0);
+            const commentCount = (post as any).comments_count ?? ((post as any).comments ? (post as any).comments.length : 0);
+            const repostCount = (post as any).reposts_count ?? ((post as any).reposts ? (post as any).reposts.length : 0);
+
+            // Detect if current user reposted this post
+            let reposterName: string | null = null;
+            try {
+              // get current user id
+              // inline require to avoid circular import
+              const current = user as any;
+              const currentId = current?.id || current?.user_id;
+              if (currentId && Array.isArray((post as any).reposts)) {
+                const match = (post as any).reposts.find((r: any) => r?.user?.user_id === currentId);
+                if (match) {
+                  reposterName = `${match.user?.f_name || ''} ${match.user?.l_name || ''}`.trim();
+                }
+              }
+            } catch {}
 
             return (
               <View key={post.post_id} style={styles.card}>
@@ -265,7 +282,7 @@ const HomeScreen = () => {
               <View style={{ flex: 1 }}>
                     <Text style={styles.name}>{userName}</Text>
                     <Text style={styles.meta}>
-                      {formatDate(post.created_at)} • 🌐
+                      {formatDate(post.created_at)} • 🌐{reposterName ? `  •  Reposted by ${reposterName}` : ''}
                     </Text>
               </View>
             </View>
@@ -278,43 +295,49 @@ const HomeScreen = () => {
 
                 {post.post_image && (
                   <Image 
-                    source={{ uri: post.post_image }} 
+                    source={{ uri: String(post.post_image).startsWith('http') || String(post.post_image).startsWith('data:') ? String(post.post_image) : `${API_BASE_URL}${post.post_image}` }} 
                     style={styles.postImage}
                     resizeMode="cover"
                   />
                 )}
 
+            <View style={styles.actionsCountsRow}>
+              <TouchableOpacity onPress={() => router.push({ pathname: '/posts/likes', params: { postId: String(post.post_id) } })}>
+                <Text style={styles.countText}>{likeCount} {likeCount === 1 ? 'like' : 'likes'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => router.push({ pathname: '/posts/comments', params: { postId: String(post.post_id) } })}>
+                <Text style={styles.countText}>{commentCount} {commentCount === 1 ? 'comment' : 'comments'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => router.push({ pathname: '/posts/reposts', params: { postId: String(post.post_id) } })}>
+                <Text style={styles.countText}>{repostCount} {repostCount === 1 ? 'share' : 'shares'}</Text>
+              </TouchableOpacity>
+            </View>
+
             <View style={styles.actions}>
-                  <TouchableOpacity 
-                    style={styles.actionIcon}
-                    onPress={() => handleLikePost(post.post_id, isLiked)}
-                  >
-                    <FontAwesome 
-                      name={isLiked ? "thumbs-up" : "thumbs-o-up"} 
-                      size={16} 
-                      color={isLiked ? "#1e3a8a" : "#555"} 
-                    />
-                    <Text style={[styles.actionText, isLiked && styles.likedText]}>
-                      {likeCount > 0 ? likeCount : ''} Like
-                    </Text>
+              <TouchableOpacity 
+                style={styles.actionIcon}
+                onPress={() => handleLikePost(post.post_id, isLiked)}
+              >
+                <FontAwesome 
+                  name={isLiked ? 'thumbs-up' : 'thumbs-o-up'} 
+                  size={18} 
+                  color={isLiked ? '#1e3a8a' : '#555'} 
+                />
+                <Text style={[styles.actionText, isLiked && styles.likedText]}>Like</Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.actionIcon}
                 onPress={() => handleComment(post.post_id)}
               >
-                <FontAwesome name="comment-o" size={16} color="#555" />
-                    <Text style={styles.actionText}>
-                      {commentCount > 0 ? commentCount : ''} Comment
-                    </Text>
+                <FontAwesome name="comment-o" size={18} color="#555" />
+                <Text style={styles.actionText}>Comment</Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.actionIcon}
                 onPress={() => handleRepost(post.post_id)}
               >
-                <FontAwesome name="retweet" size={16} color="#555" />
-                <Text style={styles.actionText}>
-                  {repostCount > 0 ? repostCount : ''} Repost
-                </Text>
+                <FontAwesome name="retweet" size={18} color="#555" />
+                <Text style={styles.actionText}>Share</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -653,6 +676,16 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginTop: 10,
     backgroundColor: '#ccc',
+  },
+  actionsCountsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    marginTop: 8,
+  },
+  countText: {
+    fontSize: 12,
+    color: '#666',
   },
   likedText: {
     color: '#1e3a8a',

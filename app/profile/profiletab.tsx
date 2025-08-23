@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Image, StyleSheet, ScrollView, Alert } from 'react-native';
 import { FontAwesome, MaterialIcons } from '@expo/vector-icons';
 import NavBar from '../(tabs)/navbar';
 import { useRouter } from 'expo-router';
-import { getUserInfo } from '../../services/api';
+import { API_BASE_URL, getUserInfo } from '../../services/api';
+import { useFocusEffect } from '@react-navigation/native';
 
 const profilePic = require('../../assets/images/sample_pic.jpg');
 const cciLogo = require('../../assets/images/ccict_logo.jpg');
@@ -21,23 +22,28 @@ const menuItems = [
 interface UserProfile {
   name?: string;
   username?: string;
+  profile_pic?: string;
 }
 
 export default function ProfileTab() {
   const router = useRouter();
   const [user, setUser] = useState<UserProfile | null>(null);
 
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const userInfo = await getUserInfo();
-        setUser(userInfo);
-      } catch (e) {
-        setUser(null);
-      }
-    };
-    fetchUser();
+  const fetchUser = useCallback(async () => {
+    try {
+      const userInfo = await getUserInfo();
+      setUser(userInfo);
+    } catch (e) {
+      setUser(null);
+    }
   }, []);
+
+  useEffect(() => { fetchUser(); }, [fetchUser]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchUser();
+    }, [fetchUser])
+  );
 
   return (
     <View style={styles.container}>
@@ -45,7 +51,12 @@ export default function ProfileTab() {
       <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
         {/* Profile Card */}
         <TouchableOpacity style={styles.profileCard} activeOpacity={0.8} onPress={() => router.push('/profile/profilepage')}>
-          <Image source={profilePic} style={styles.profileAvatar} />
+          <Image 
+            source={user?.profile_pic 
+              ? { uri: String(user.profile_pic).startsWith('http') ? String(user.profile_pic) : `${API_BASE_URL}${user.profile_pic}` }
+              : profilePic}
+            style={styles.profileAvatar} 
+          />
           <View style={{ flex: 1, marginLeft: 12 }}>
             <Text style={styles.profileName}>{user?.name || 'Your Name'}</Text>
             <Text style={styles.profileUsername}>{user?.username || '@username'}</Text>
