@@ -217,32 +217,32 @@ export const updateProfile = async (bio: string, profile_pic: string) =>
   (await api.put('/api/profile/update/', { bio, profile_pic })).data;
 
 export const updateAlumniProfile = async (params: { bio?: string; imageUri?: string }) => {
-  const meRaw = await SecureStore.getItemAsync('user');
-  const me = meRaw ? JSON.parse(meRaw) : null;
-  const userId = me?.id || me?.user_id;
-  if (!userId) throw new Error('Missing user id');
+    const meRaw = await SecureStore.getItemAsync('user');
+    const me = meRaw ? JSON.parse(meRaw) : null;
+    const userId = me?.id || me?.user_id;
+    if (!userId) throw new Error('Missing user id');
 
-  const form = new FormData();
+    const form = new FormData();
   if (typeof params.bio === 'string') form.append('bio', params.bio);
-  if (params.imageUri) {
+    if (params.imageUri) {
     form.append('profile_pic', { uri: params.imageUri, name: 'profile.jpg', type: 'image/jpeg' } as any);
   }
 
   const { data } = await api.put(`/api/alumni/profile/update/?user_id=${userId}`, form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
 
   const updated = data?.user || {};
-  if (me) {
+    if (me) {
     const merged = {
       ...me,
       profile_bio: updated.bio ?? me.profile_bio,
       profile_pic: updated.profile_pic ?? me.profile_pic,
       name: updated.name ?? me.name,
     };
-    await SecureStore.setItemAsync('user', JSON.stringify(merged));
-  }
-  return updated;
+      await SecureStore.setItemAsync('user', JSON.stringify(merged));
+    }
+    return updated;
 };
 
 export default api;
