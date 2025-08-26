@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Image, StyleSheet, Alert, ActivityIndicator, Modal, ScrollView } from 'react-native';
-import { useRouter } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
-import { createPost, getUserInfo, getPostCategories } from '../../services/api';
 import * as FileSystem from 'expo-file-system';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { API_BASE_URL, createPost, getPostCategories, getUserInfo } from '../../services/api';
 // @ts-ignore
 import * as ImagePicker from 'expo-image-picker';
 
@@ -24,6 +24,7 @@ interface PostCategory {
 
 export default function PostScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const [user, setUser] = useState<UserInfo | null>(null);
   const [postTitle, setPostTitle] = useState('');
   const [postContent, setPostContent] = useState('');
@@ -125,7 +126,7 @@ export default function PostScreen() {
         post_content: postContent.trim(),
         post_image: postImage,
         post_cat_id: selectedCategory,
-        type: 'personal', // You can make this dynamic based on category
+        type: (typeof params.type === 'string' && params.type) ? params.type : 'personal',
       };
 
       console.log('Submitting post data:', postData);
@@ -154,8 +155,10 @@ export default function PostScreen() {
     );
   }
 
-  const userName = user ? `${user.f_name || ''} ${user.l_name || ''}`.trim() || 'User' : 'User';
-  const userAvatar = user?.profile_pic ? { uri: user.profile_pic } : require('../../assets/images/sample_pic.jpg');
+  const userName = user ? (user.name || `${user.f_name || ''} ${user.l_name || ''}`.trim()) || 'User' : 'User';
+  const userAvatar = user?.profile_pic
+    ? { uri: String(user.profile_pic).startsWith('http') || String(user.profile_pic).startsWith('data:') ? String(user.profile_pic) : `${API_BASE_URL}${user.profile_pic}` }
+    : require('../../assets/images/sample_pic.jpg');
 
   return (
     <View style={styles.container}>
@@ -190,23 +193,12 @@ export default function PostScreen() {
           <Image source={userAvatar} style={styles.avatar} />
           <Text style={styles.userName}>{userName}</Text>
         </View>
-
-        {/* Category Selection */}
-        <View style={styles.categoryContainer}>
-          <Text style={styles.categoryLabel}>Category:</Text>
-          <TouchableOpacity
-            style={styles.categoryDropdown}
-            onPress={() => setCategoryModalVisible(true)}
-          >
-            <Text style={styles.categoryDropdownText}>
-              {selectedCategory ? 
-                categories.find(cat => cat.post_cat_id === selectedCategory)?.personal ? 'Personal' :
-                categories.find(cat => cat.post_cat_id === selectedCategory)?.events ? 'Events' :
-                categories.find(cat => cat.post_cat_id === selectedCategory)?.announcements ? 'Announcements' :
-                categories.find(cat => cat.post_cat_id === selectedCategory)?.donation ? 'Donation' : 'Select Category'
-                : 'Select Category'}
-            </Text>
-            <FontAwesome name="chevron-down" size={16} color="#666" />
+        {/* Category Chip */}
+        <View style={styles.categoryRow}>
+          <TouchableOpacity style={styles.categoryChip} onPress={() => setCategoryModalVisible(true)}>
+            <FontAwesome name="bookmark" size={12} color="#174f84" style={{ marginRight: 6 }} />
+            <Text style={styles.categoryChipText}>Category</Text>
+            <FontAwesome name="caret-up" size={12} color="#174f84" style={{ marginLeft: 6 }} />
           </TouchableOpacity>
         </View>
 
@@ -252,7 +244,7 @@ export default function PostScreen() {
                        category.donation ? 'Donation' : 'Other'}
                     </Text>
                     {selectedCategory === category.post_cat_id && (
-                      <FontAwesome name="check" size={16} color="#4B944D" />
+                      <FontAwesome name="check" size={16} color="#fff" />
                     )}
                   </TouchableOpacity>
                 ))}
@@ -373,7 +365,8 @@ topBarButtonRight: {
   userName: { 
     fontWeight: 'bold', 
     fontSize: 15, 
-    color: '#222' 
+    color: '#222',
+    marginTop: -15,
   },
   input: {
     backgroundColor: '#fff',
@@ -385,6 +378,7 @@ topBarButtonRight: {
     minHeight: 100,
     marginBottom: 16,
     textAlignVertical: 'top',
+    color: '#D9D9D9',
   },
   addImageContainer: {
     backgroundColor: '#fff',
@@ -427,29 +421,31 @@ topBarButtonRight: {
     marginTop: 1,
     borderTopColor: '#1C4E80',
   },
-  categoryContainer: {
-    marginTop: 10,
-    marginBottom: 10,
+  categoryRow: {
+    marginTop: -25,
+    marginBottom: 12,
+    paddingLeft: 50,
   },
-  categoryLabel: {
-    fontSize: 14,
-    color: '#555',
-    marginBottom: 5,
-  },
-  categoryDropdown: {
+  categoryChip: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    alignSelf: 'flex-start',
     backgroundColor: '#fff',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#eee',
-    padding: 12,
-    marginTop: 5,
+    borderColor: '#ddd',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
-  categoryDropdownText: {
-    fontSize: 16,
-    color: '#333',
+  categoryChipText: {
+    fontSize: 12,
+    color: '#174f84',
+    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,
@@ -479,7 +475,7 @@ topBarButtonRight: {
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#D9D9D9',
   },
   closeButton: {
     padding: 5,
@@ -501,14 +497,14 @@ topBarButtonRight: {
     borderBottomColor: '#f0f0f0',
   },
   selectedCategoryItem: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#1C4E80',
   },
   categoryItemText: {
     fontSize: 16,
     color: '#333',
   },
   selectedCategoryItemText: {
-    color: '#4B944D',
+    color: '#fff',
     fontWeight: 'bold',
   },
   titleInput: {
@@ -519,6 +515,7 @@ topBarButtonRight: {
     padding: 12,
     fontSize: 16,
     marginBottom: 10,
+    color: '#D9D9D9',
   },
   charCount: {
     fontSize: 12,

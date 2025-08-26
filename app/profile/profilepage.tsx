@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity, TextInput, ScrollView, Modal, ActivityIndicator, Alert } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
-import { getUserInfo, updateProfile, getPosts } from '../../services/api';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+// @ts-ignore
+import * as ImagePicker from 'expo-image-picker';
+import { API_BASE_URL, checkFollowStatus, fetchFollowers, followUser, getAlumniDetails, getPosts, getUserInfo, unfollowUser, updateAlumniProfile } from '../../services/api';
 
 const profilePic = require('../../assets/images/sample_pic.jpg');
 
@@ -22,44 +24,67 @@ export default function ProfilePage() {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editBio, setEditBio] = useState('');
   const router = useRouter();
+  const params = useLocalSearchParams();
+  const viewUserId = typeof params.viewUserId === 'string' ? parseInt(params.viewUserId) : undefined;
+  const [isOwnProfile, setIsOwnProfile] = useState(true);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followers, setFollowers] = useState<any[]>([]);
+  const [editMode, setEditMode] = useState<'bio' | 'photo'>('bio');
+  const [showEditTabs, setShowEditTabs] = useState<boolean>(false);
+  const [newPhotoUri, setNewPhotoUri] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [currentProfilePicUri, setCurrentProfilePicUri] = useState<string | null>(null);
 
   useEffect(() => {
     const loadUser = async () => {
       setLoading(true);
       try {
-        const [userInfo, postsData] = await Promise.all([
-          getUserInfo(),
-          getPosts()
-        ]);
-        
-        const fallbackUser: UserProfile = {
-          name: 'Rhodjien Mary P. Caratao',
-          username: '@angelaboloc',
-          bio: 'Bio',
-          profile_pic: profilePic,
-        };
-        
-        setUser(userInfo ? {
-          name: userInfo.name || fallbackUser.name,
-          username: userInfo.username || fallbackUser.username,
-          bio: userInfo.bio || fallbackUser.bio,
-          profile_pic: userInfo.profile_pic || fallbackUser.profile_pic,
-        } : fallbackUser);
-        setEditBio(userInfo?.bio || 'Bio');
-        
-        // Filter posts to show only current user's posts
-        console.log('All posts:', postsData);
-        console.log('User info:', userInfo);
-        const userPosts = postsData.filter((post: any) => {
-          console.log('Post user ID:', post.user?.user_id, 'Current user ID:', userInfo?.id);
-          return post.user?.user_id === userInfo?.id;
-        });
-        console.log('User posts:', userPosts);
-        setPosts(userPosts);
+        const me = await getUserInfo();
+        const viewingOwn = !viewUserId || (me && (me.id === viewUserId || me.user_id === viewUserId));
+        setIsOwnProfile(!!viewingOwn);
+        if (viewingOwn) {
+          const [postsData] = await Promise.all([
+            getPosts()
+          ]);
+          const profile: UserProfile = {
+            name: me?.name || `${me?.f_name || ''} ${me?.l_name || ''}`.trim(),
+            username: me?.acc_username || '@user',
+            bio: me?.profile_bio || 'Bio',
+            profile_pic: me?.profile_pic ? { uri: (String(me.profile_pic).startsWith('http') || String(me.profile_pic).startsWith('data:')) ? me.profile_pic : `${API_BASE_URL}${me.profile_pic}` } : profilePic,
+          };
+          setUser(profile);
+          setEditBio(profile.bio);
+          setCurrentProfilePicUri(me?.profile_pic ? ((String(me.profile_pic).startsWith('http') || String(me.profile_pic).startsWith('data:')) ? me.profile_pic : `${API_BASE_URL}${me.profile_pic}`) : null);
+          const userId = me?.id || me?.user_id;
+          const userPosts = (postsData || []).filter((p: any) => p.user?.user_id === userId);
+          setPosts(userPosts);
+          const followersRes = await fetchFollowers(userId);
+          setFollowers(followersRes?.followers || []);
+        } else {
+          if (!viewUserId) return;
+          const details = await getAlumniDetails(viewUserId);
+          const a = details?.alumni || {};
+          const profile: UserProfile = {
+            name: a.name || `${a.first_name || ''} ${a.last_name || ''}`.trim(),
+            username: a.ctu_id ? `@${a.ctu_id}` : '@user',
+            bio: a.profile_bio || '',
+            profile_pic: a.profile_pic ? { uri: String(a.profile_pic).startsWith('http') ? a.profile_pic : `${API_BASE_URL}${a.profile_pic}` } : profilePic,
+          };
+          setUser(profile);
+          const [postsData, followersRes, statusRes] = await Promise.all([
+            getPosts(),
+            fetchFollowers(viewUserId),
+            checkFollowStatus(viewUserId),
+          ]);
+          setFollowers(followersRes?.followers || []);
+          setIsFollowing(!!statusRes?.is_following);
+          const userPosts = (postsData || []).filter((p: any) => p.user?.user_id === viewUserId);
+          setPosts(userPosts);
+        }
       } catch (e) {
         setUser({
-          name: 'Angel Khyla Marie Aboloc',
-          username: '@angelaboloc',
+          name: 'User',
+          username: '@user',
           bio: 'Bio',
           profile_pic: profilePic,
         });
@@ -67,7 +92,7 @@ export default function ProfilePage() {
       setLoading(false);
     };
     loadUser();
-  }, []);
+  }, [viewUserId]);
 
   if (loading || !user) {
     return (
@@ -88,28 +113,72 @@ export default function ProfilePage() {
       </View>
       {/* Profile Card */}
       <View style={styles.profileCard}>
-        <TouchableOpacity style={styles.editBtnAbsolute} onPress={() => setEditModalVisible(true)}>
-          <FontAwesome name="pencil" size={16} color="#174f84" />
-          <Text style={styles.editBtnText}>Edit</Text>
-        </TouchableOpacity>
+        {isOwnProfile && (
+          <TouchableOpacity style={styles.editBtnAbsolute} onPress={() => { setEditMode('bio'); setShowEditTabs(false); setEditModalVisible(true); }}>
+            <FontAwesome name="pencil" size={16} color="#174f84" />
+            <Text style={styles.editBtnText}>Edit</Text>
+          </TouchableOpacity>
+        )}
         <View style={styles.profileImageWrapper}>
           <Image source={user.profile_pic} style={styles.profileImage} />
+          {isOwnProfile && (
+            <TouchableOpacity
+              style={styles.profilePhotoEditBtn}
+              onPress={() => { setEditMode('photo'); setShowEditTabs(false); setEditModalVisible(true); }}
+              accessibilityLabel="Change profile picture"
+            >
+              <FontAwesome name="camera" size={14} color="#fff" />
+            </TouchableOpacity>
+          )}
         </View>
         <Text style={styles.profileName}>{user.name}</Text>
         <Text style={styles.profileUsername}>{user.username}</Text>
+        {!isOwnProfile && (
+          <View style={styles.profileActionsRow}>
+            <TouchableOpacity 
+              style={[styles.followBtn, isFollowing ? styles.followingBtn : styles.followBtn]}
+              onPress={async () => {
+                try {
+                  if (!viewUserId) return;
+                  if (isFollowing) {
+                    const res = await unfollowUser(viewUserId);
+                    if (res?.success) setIsFollowing(false);
+                  } else {
+                    const res = await followUser(viewUserId);
+                    if (res?.success) setIsFollowing(true);
+                  }
+                } catch (e) {}
+              }}
+            >
+              <Text style={{ color: isFollowing ? '#174f84' : '#fff', fontWeight: 'bold' }}>{isFollowing ? 'Following' : 'Follow'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.messageBtn}
+              onPress={() => {
+                const encodedName = encodeURIComponent(user.name);
+                // Navigate to chat, passing name; you can expand to pass userId/avatar later
+                router.push(`/messages/chatmessage?name=${encodedName}`);
+              }}
+            >
+              <Text style={styles.messageBtnText}>Message</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         <View style={styles.bioRow}>
           <Text style={styles.bioText}>{user.bio}</Text>
         </View>
       </View>
-      {/* Start a Post */}
-      <View style={styles.startPostCard}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Image source={user.profile_pic} style={styles.avatar} />
-          <TouchableOpacity style={styles.startPostInput} onPress={() => router.push('/posts/post')}>
-            <Text style={{ color: '#888' }}>Start a post</Text>
-          </TouchableOpacity>
+      {/* Start a Post (own profile only) */}
+      {isOwnProfile ? (
+        <View style={styles.startPostCard}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Image source={user.profile_pic} style={styles.avatar} />
+            <TouchableOpacity style={styles.startPostInput} onPress={() => router.push('/posts/post')}>
+              <Text style={{ color: '#888' }}>Start a post</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      ) : null}
       {/* Posts */}
       {posts.length === 0 ? (
         <View style={styles.noPostsContainer}>
@@ -120,13 +189,13 @@ export default function ProfilePage() {
           <View key={post.post_id} style={styles.postCard}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
               <Image 
-                source={{ uri: post.user?.profile_pic || user.profile_pic }} 
+                source={{ uri: (post.user?.profile_pic && (String(post.user.profile_pic).startsWith('http') || String(post.user.profile_pic).startsWith('data:'))) ? post.user.profile_pic : (typeof user.profile_pic === 'object' && user.profile_pic.uri ? user.profile_pic.uri : `${API_BASE_URL}${post.user?.profile_pic || ''}`) }} 
                 style={styles.avatar} 
               />
               <View style={{ flex: 1 }}>
                 <Text style={styles.postName}>{post.user?.f_name} {post.user?.l_name}</Text>
                 <Text style={styles.postMeta}>
-                  {new Date(post.created_at).toLocaleDateString()} • 
+                  {(() => { try { const d = new Date(post.created_at); const now = new Date(); const diff = Math.floor((now.getTime() - d.getTime())/60000); if (diff<1) return 'Just now'; if (diff<60) return `${diff}m`; const h=Math.floor(diff/60); if (h<24) return `${h}h`; const dys=Math.floor(h/24); if (dys<7) return `${dys}d`; const w=Math.floor(dys/7); if (w<5) return `${w}w`; const mo=Math.floor(dys/30); if (mo<12) return `${mo}mo`; return `${Math.floor(dys/365)}y`; } catch { return ''; } })()} • 
                   <FontAwesome name="globe" size={12} color="#888" />
                 </Text>
               </View>
@@ -136,7 +205,7 @@ export default function ProfilePage() {
             )}
             <Text style={styles.postContent}>{post.post_content}</Text>
             {post.post_image && (
-              <Image source={{ uri: post.post_image }} style={styles.postImage} />
+              <Image source={{ uri: (String(post.post_image).startsWith('http') || String(post.post_image).startsWith('data:')) ? String(post.post_image) : `${API_BASE_URL}${post.post_image}` }} style={styles.postImage} />
             )}
             <View style={styles.postActions}>
               <TouchableOpacity style={styles.actionBtn}>
@@ -159,32 +228,93 @@ export default function ProfilePage() {
       <Modal visible={editModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Edit Bio</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={editBio}
-              onChangeText={setEditBio}
-              placeholder="Enter your bio"
-            />
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
+            {showEditTabs && (
+              <View style={styles.editTabs}>
+                <TouchableOpacity style={[styles.editTabBtn, editMode === 'bio' && styles.editTabBtnActive]} onPress={() => setEditMode('bio')}>
+                  <Text style={[styles.editTabText, editMode === 'bio' && styles.editTabTextActive]}>Edit Bio</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.editTabBtn, editMode === 'photo' && styles.editTabBtnActive]} onPress={() => setEditMode('photo')}>
+                  <Text style={[styles.editTabText, editMode === 'photo' && styles.editTabTextActive]}>Change Photo</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {editMode === 'bio' ? (
+              <>
+                <Text style={styles.modalTitle}>Edit Bio</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={editBio}
+                  onChangeText={setEditBio}
+                  placeholder="Enter your bio"
+                />
+              </>
+            ) : (
+              <>
+                <Text style={styles.modalTitle}>Update Profile Picture</Text>
+                <TouchableOpacity
+                  style={[styles.modalBtn, { backgroundColor: '#174f84', width: '100%', alignItems: 'center' }]}
+                  onPress={async () => {
+                    try {
+                      const result = await ImagePicker.launchImageLibraryAsync({
+                        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                        allowsEditing: true,
+                        aspect: [1, 1],
+                        quality: 0.8,
+                      });
+                      if (!result.canceled && result.assets && result.assets.length > 0) {
+                        setNewPhotoUri(result.assets[0].uri);
+                      }
+                    } catch (e) {
+                      Alert.alert('Error', 'Failed to pick image');
+                    }
+                  }}
+                >
+                  <Text style={{ color: '#fff' }}>Choose Photo</Text>
+                </TouchableOpacity>
+                {newPhotoUri && (
+                  <Image source={{ uri: newPhotoUri }} style={{ width: 140, height: 140, borderRadius: 70, marginTop: 12 }} />
+                )}
+              </>
+            )}
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 16 }}>
               <TouchableOpacity
                 style={[styles.modalBtn, { backgroundColor: '#174f84' }]}
                 onPress={async () => {
                   try {
-                    await updateProfile(editBio, user.profile_pic);
-                    setUser((prev) => prev ? { ...prev, bio: editBio } : prev);
+                    setSaving(true);
+                    if (editMode === 'bio') {
+                      await updateAlumniProfile({ bio: editBio });
+                      setUser((prev) => prev ? { ...prev, bio: editBio } : prev);
+                      Alert.alert('Profile updated!');
+                    } else {
+                      if (!newPhotoUri) {
+                        Alert.alert('Select Photo', 'Please choose a photo to upload');
+                        setSaving(false);
+                        return;
+                      }
+                      await updateAlumniProfile({ bio: editBio, imageUri: newPhotoUri });
+                      setUser((prev) => prev ? { ...prev, profile_pic: { uri: newPhotoUri } } : prev);
+                      setCurrentProfilePicUri(newPhotoUri);
+                      setNewPhotoUri(null);
+                      Alert.alert('Profile picture updated!');
+                    }
                     setEditModalVisible(false);
-                    Alert.alert('Profile updated!');
                   } catch (error) {
                     Alert.alert('Error', 'Failed to update profile');
+                  } finally {
+                    setSaving(false);
                   }
                 }}
+                disabled={saving}
               >
-                <Text style={{ color: '#fff' }}>Save</Text>
+                <Text style={{ color: '#fff' }}>{saving ? 'Saving...' : 'Save'}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalBtn, { backgroundColor: '#eee' }]}
-                onPress={() => setEditModalVisible(false)}
+                onPress={() => { setEditModalVisible(false); setNewPhotoUri(null); }}
+                disabled={saving}
               >
                 <Text style={{ color: '#174f84' }}>Cancel</Text>
               </TouchableOpacity>
@@ -237,8 +367,27 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     width: 100,
     height: 100,
-    overflow: 'hidden',
+    overflow: 'visible',
     backgroundColor: '#eee',
+  },
+  profilePhotoEditBtn: {
+    position: 'absolute',
+    right: -6,
+    bottom: -6,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#174f84',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+    zIndex: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
   },
   profileImage: {
     width: 100,
@@ -283,6 +432,13 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginLeft: 4,
   },
+  profileActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   startPostCard: {
     backgroundColor: '#fff',
     borderRadius: 16,
@@ -323,6 +479,25 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
     width: '100%',
+  },
+  followBtn: {
+    backgroundColor: '#174f84',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  followingBtn: {
+    backgroundColor: '#e6f0ff',
+  },
+  messageBtn: {
+    backgroundColor: '#1C4E80',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  messageBtnText: {
+    color: '#fff',
+    fontWeight: 'bold',
   },
   postName: {
     fontWeight: 'bold',
@@ -368,6 +543,32 @@ const styles = StyleSheet.create({
     padding: 20,
     width: '80%',
     alignItems: 'center',
+  },
+  editTabs: {
+    flexDirection: 'row',
+    width: '100%',
+    marginBottom: 12,
+  },
+  editTabBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+    marginHorizontal: 4,
+    alignItems: 'center',
+  },
+  editTabBtnActive: {
+    backgroundColor: '#e6f0ff',
+    borderColor: '#174f84',
+  },
+  editTabText: {
+    color: '#333',
+    fontWeight: '500',
+  },
+  editTabTextActive: {
+    color: '#174f84',
+    fontWeight: 'bold',
   },
   modalTitle: {
     fontSize: 18,

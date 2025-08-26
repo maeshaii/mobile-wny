@@ -36,7 +36,7 @@ const ChatMessageScreen = () => {
           <FontAwesome name="arrow-left" size={24} color="#1C4E80" />
         </TouchableOpacity>
         <Image source={samplePic} style={styles.avatar} />
-        <Text style={styles.name}>Paquibot, Alvin</Text>
+        <Text style={styles.name}>{typeof name === 'string' ? name : 'Chat'}</Text>
       </View>
       <View style={styles.separator} />
 

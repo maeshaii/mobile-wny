@@ -1,42 +1,41 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, FlatList, Image } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { API_BASE_URL, getAlumniList } from '../../services/api';
 
-const recentUsers = [
-  {
-    id: '1',
-    name: 'Paquibot, Alvin',
-    avatar: require('../../assets/images/sample_pic.jpg'),
-    time: '4 nov',
-  },
-  {
-    id: '2',
-    name: 'Ma-asin, Shaira Mae',
-    avatar: require('../../assets/images/sample_pic.jpg'),
-    time: '4 nov',
-  },
-  {
-    id: '3',
-    name: 'Vaflor, Paul Vincent',
-    avatar: require('../../assets/images/sample_pic.jpg'),
-    time: '4 nov',
-  },
-  {
-    id: '4',
-    name: 'Aboloc, Angel Khyla',
-    avatar: require('../../assets/images/sample_pic.jpg'),
-    time: '4 nov',
-  },
-];
+const samplePic = require('../../assets/images/sample_pic.jpg');
 
 export default function SearchPage() {
   const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState<any[]>([]);
   const router = useRouter();
 
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true);
+        const data = await getAlumniList();
+        const mapped = (data.alumni || []).map((a: any) => ({
+          id: String(a.id),
+          name: a.name,
+          avatar: a.profile_pic ? { uri: `${a.profile_pic}`.startsWith('http') ? a.profile_pic : `${API_BASE_URL}${a.profile_pic}` } : samplePic,
+          time: '',
+        }));
+        setUsers(mapped);
+      } catch (e) {
+        setUsers([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
   const filteredUsers = search
-    ? recentUsers.filter(u => u.name.toLowerCase().includes(search.toLowerCase()))
-    : recentUsers;
+    ? users.filter(u => u.name.toLowerCase().includes(search.toLowerCase()))
+    : users;
 
   return (
     <View style={styles.container}>
@@ -60,24 +59,26 @@ export default function SearchPage() {
           <Text style={styles.seeAll}>See all</Text>
         </TouchableOpacity>
       </View>
-      {/* Recent Users List */}
-      <FlatList
-        data={filteredUsers}
-        keyExtractor={item => item.id}
-        renderItem={({ item }) => (
-          <View style={styles.userRow}>
-            <Image source={item.avatar} style={styles.avatar} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.userName}>{item.name}</Text>
-              <Text style={styles.userTime}>{item.time}</Text>
-            </View>
-            <TouchableOpacity style={styles.menuBtn}>
-              <FontAwesome name="ellipsis-v" size={20} color="#174f84" />
+      {/* Users List */}
+      {loading ? (
+        <ActivityIndicator style={{ marginTop: 20 }} />
+      ) : (
+        <FlatList
+          data={filteredUsers}
+          keyExtractor={item => item.id}
+          renderItem={({ item }) => (
+            <TouchableOpacity style={styles.userRow} onPress={() => router.push({ pathname: '/profile/profilepage', params: { viewUserId: item.id } })}>
+              <Image source={item.avatar} style={styles.avatar} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.userName}>{item.name}</Text>
+                <Text style={styles.userTime}>{item.time}</Text>
+              </View>
+              <FontAwesome name="angle-right" size={22} color="#174f84" />
             </TouchableOpacity>
-          </View>
-        )}
-        contentContainerStyle={{ paddingBottom: 30 }}
-      />
+          )}
+          contentContainerStyle={{ paddingBottom: 30 }}
+        />
+      )}
     </View>
   );
 }

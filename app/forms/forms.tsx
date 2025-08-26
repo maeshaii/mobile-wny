@@ -1,24 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import * as DocumentPicker from 'expo-document-picker';
+import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
+  ActivityIndicator,
+  Alert,
+  Platform,
   ScrollView,
   StyleSheet,
+  Text,
+  TextInput,
   TouchableOpacity,
-  Platform,
-  Alert,
-  ActivityIndicator,
+  View,
 } from 'react-native';
-import * as DocumentPicker from 'expo-document-picker';
-import RadioGroup from 'react-native-radio-buttons-group';
 import type { RadioButtonProps } from 'react-native-radio-buttons-group';
+import RadioGroup from 'react-native-radio-buttons-group';
 // @ts-ignore
-import type {} from 'expo-document-picker';
-import type {} from 'react-native-radio-buttons-group';
-import { useNavigation } from '@react-navigation/native';
 import { FontAwesome } from '@expo/vector-icons';
-import { getTrackerQuestions, getUserInfo, submitTrackerResponse } from '../../services/api';
+import { useNavigation } from '@react-navigation/native';
+import type { } from 'expo-document-picker';
+import type { } from 'react-native-radio-buttons-group';
+import { getAlumniDetails, getTrackerQuestions, getUserInfo, submitTrackerResponse } from '../../services/api';
 
 type FileAsset = {
   name: string;
@@ -101,13 +101,37 @@ export default function TrackerForm() {
     freelance: false,
   });
 
-  // Fetch questions from API
+  // Fetch questions from API and prefill using same logic as web
   useEffect(() => {
-    const fetchQuestions = async () => {
+    const init = async () => {
       try {
         setLoading(true);
-        const data = await getTrackerQuestions();
-        setQuestions(data);
+        const [qs, user] = await Promise.all([getTrackerQuestions(), getUserInfo()]);
+        setQuestions(qs);
+        // Prefill like web does
+        try {
+          if (user?.id) {
+            const details = await getAlumniDetails(user.id);
+            const alumni = details?.alumni || {};
+            setForm(prev => ({
+              ...prev,
+              courseGraduated: alumni.course || prev.courseGraduated,
+              yearGraduated: alumni.batch || alumni.year_graduated || prev.yearGraduated,
+              birthdate: alumni.birthdate || prev.birthdate,
+              contactno: alumni.phone || prev.contactno,
+              email: alumni.email || prev.email,
+              program: alumni.program || prev.program,
+              lastName: alumni.last_name || alumni.l_name || prev.lastName,
+              firstName: alumni.first_name || alumni.f_name || prev.firstName,
+              middleName: alumni.middle_name || alumni.m_name || prev.middleName,
+              gender: alumni.gender || prev.gender,
+              address: alumni.address || prev.currentAdd,
+              civilStatus: alumni.civil_status || prev.currentStat,
+              age: alumni.age ? String(alumni.age) : prev.age,
+              socmedlink: alumni.social_media || prev.socmedlink,
+            }));
+          }
+        } catch {}
         setError(null);
       } catch (error) {
         console.error('Failed to fetch questions:', error);
@@ -116,17 +140,17 @@ export default function TrackerForm() {
         setLoading(false);
       }
     };
-
-    fetchQuestions();
+    init();
   }, []);
 
   const handleChange = (key: keyof typeof form, value: any) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  // Submit form with API integration
+  // Submit form with API integration (multipart to match backend expectations)
   const handleSubmit = async () => {
     try {
+
       setSubmitting(true); // Add this line
       
       const user = await getUserInfo();
@@ -145,6 +169,75 @@ export default function TrackerForm() {
     } catch (error) {
       console.error('Submit error:', error);
       Alert.alert('Error', 'Failed to submit form');
+      setSubmitting(true);
+
+      const user = await getUserInfo();
+
+      // Build answers map (align keys with web labels where possible)
+      const answers: Record<string, any> = {
+        Email: form.email,
+        'Year Graduated': form.yearGraduated,
+        Course: form.courseGraduated,
+        'Last Name': form.lastName,
+        'First Name': form.firstName,
+        'Middle Name': form.middleName,
+        Gender: form.gender,
+        Age: form.age,
+        Birthdate: form.birthdate,
+        'Phone Number': form.contactno,
+        'Social Media': form.socmedlink,
+        'Current Address': form.currentAdd,
+        'Home Address': form.homeAdd,
+        'First Employer': form.employeer1,
+        'First Date Hired': form.dateHired1,
+        'First Job Position': form.jobPos1,
+        'First Employment Status': form.empstat1,
+        'First Company Address': form.compAdd1,
+        Sector: form.sector,
+        'Presently Employed': form.presentlyEmployed,
+        'Current Employment Status': form.currentStat,
+        'Current Company': form.currentComp,
+        'Current Position': form.currentPos,
+        'Years Employed': form.yearsEmployed,
+        'Salary Range': form.salaryRange,
+        'Has Awards': hasAwards,
+        'Further Study': furtherStudy,
+        'Further Study Date Started': form.fsDateStart,
+        'Post Graduate Degree': form.postGrad,
+        'Further Study University': form.postGradUniv,
+        'Further Study Total Units': form.totalUnits,
+        'Unemployment Reasons': Object.keys(unemploymentReasons)
+          .filter(k => (unemploymentReasons as any)[k] === true && k !== 'otherText'),
+        'Unemployment Other': unemploymentReasons.otherText,
+      };
+
+      const fd = new FormData();
+      fd.append('user_id', String(user.id));
+      fd.append('answers', JSON.stringify(answers));
+
+      // Optional: attach a generic file using a synthetic question id if present
+      if (form.file && form.file.uri && form.file.name) {
+        try {
+          // Use a synthetic question id "9999" for generic uploads
+          fd.append('answers', JSON.stringify({ ...answers, ['9999']: { type: 'file' } }));
+          fd.append('file_9999', {
+            uri: form.file.uri,
+            name: form.file.name,
+            type: form.file.mimeType || 'application/octet-stream',
+          } as any);
+        } catch {}
+      }
+
+      try {
+        console.log('Submitting tracker (multipart) for user:', user.id);
+        await submitTrackerResponse(fd);
+        Alert.alert('Success', 'Form submitted successfully!');
+        navigation.goBack();
+      } catch (error: any) {
+        const serverMsg = error?.response?.data?.message || error?.message || 'Failed to submit form';
+        console.error('Submit error:', serverMsg, error?.response?.data);
+        Alert.alert('Error', String(serverMsg));
+      }
     } finally {
       setSubmitting(false); // Add this line
     }
@@ -240,6 +333,7 @@ export default function TrackerForm() {
           <TouchableOpacity style={styles.dropdown} onPress={() => setShowCourseDropdown(!showCourseDropdown)}>
             <Text style={{ color: form.courseGraduated ? '#222' : '#aaa' }}>{form.courseGraduated || 'Select your course'}</Text>
             <FontAwesome name="chevron-down" size={16} color="#222" style={{ marginLeft: 175 }} />
+            <FontAwesome name="chevron-down" size={16} color="#222" style={{ marginLeft: 250 }} />
           </TouchableOpacity>
           {showCourseDropdown && (
             <View style={styles.dropdownList}>
@@ -461,6 +555,7 @@ export default function TrackerForm() {
         </View>
 
       {/* PART III - Employment Status */}
+      {form.presentlyEmployed === 'Yes' && (
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>PART III - Employment Status</Text>
         <Text style={styles.label}>
@@ -661,8 +756,10 @@ export default function TrackerForm() {
         />
 
       </View>
+      )}
 
       {/* IF UNEMPLOYED */}
+      {form.presentlyEmployed === 'No' && (
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>IF UNEMPLOYED</Text>
         <Text style={styles.label}>
@@ -773,8 +870,10 @@ export default function TrackerForm() {
         />
         )}
       </View>
+      )}
 
     {/* PART IV - Further Study */}
+    {furtherStudy === 'Yes' && (
     <View style={styles.card}>
         <Text style={styles.sectionTitle}>PART IV - Further Study</Text>
         <Text style={styles.sectionDescription}>N/A if not applicable</Text> 
@@ -811,6 +910,7 @@ export default function TrackerForm() {
           onChangeText={(v) => handleChange('totalUnits', v)}
         />
     </View>
+    )}
 
       <TouchableOpacity 
         style={[styles.button, submitting && styles.buttonDisabled]} 

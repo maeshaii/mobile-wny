@@ -1,9 +1,9 @@
 import axios from 'axios';
-import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
+import * as SecureStore from 'expo-secure-store';
 
 // Use API_BASE_URL from environment variables if available
-const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || process.env.API_BASE_URL || 'http://192.168.254.135:8000';
+export const API_BASE_URL = Constants.expoConfig?.extra?.API_BASE_URL || process.env.API_BASE_URL || 'http://192.168.254.139:8000';
 
 // Create axios instance with default config
 const api = axios.create({
@@ -110,6 +110,47 @@ export const deleteNotifications = async (notificationIds: number[]) => {
   }
 };
 
+// Follow APIs
+export const fetchFollowers = async (userId: number) => {
+  try {
+    const response = await api.get(`/api/alumni/${userId}/followers/`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching followers:', error);
+    throw error;
+  }
+};
+
+export const followUser = async (userId: number) => {
+  try {
+    const response = await api.post(`/api/follow/${userId}/`, {});
+    return response.data;
+  } catch (error) {
+    console.error('Error following user:', error);
+    throw error;
+  }
+};
+
+export const unfollowUser = async (userId: number) => {
+  try {
+    const response = await api.delete(`/api/follow/${userId}/`);
+    return response.data;
+  } catch (error) {
+    console.error('Error unfollowing user:', error);
+    throw error;
+  }
+};
+
+export const checkFollowStatus = async (userId: number) => {
+  try {
+    const response = await api.get(`/api/follow/${userId}/status/`);
+    return response.data;
+  } catch (error) {
+    console.error('Error checking follow status:', error);
+    throw error;
+  }
+};
+
 // Tracker Forms API
 export const getActiveTrackerForm = async () => {
   try {
@@ -131,9 +172,13 @@ export const getTrackerQuestions = async () => {
   }
 };
 
-export const submitTrackerResponse = async (formData: any) => {
+export const submitTrackerResponse = async (data: FormData | any) => {
   try {
-    const response = await api.post('/api/tracker/responses/', formData);
+    // If FormData is provided, let axios set multipart boundary
+    const isFormData = typeof FormData !== 'undefined' && data instanceof FormData;
+    const response = await api.post('/api/tracker/responses/', data, {
+      headers: isFormData ? { 'Content-Type': 'multipart/form-data' } : undefined,
+    });
     return response.data;
   } catch (error) {
     console.error('Error submitting tracker response:', error);
@@ -165,10 +210,20 @@ export const getAlumniStatistics = async () => {
 // Alumni List API
 export const getAlumniList = async () => {
   try {
-    const response = await api.get('/api/alumni/list/');
+    const response = await api.get('/api/alumni-list/');
     return response.data;
   } catch (error) {
     console.error('Error fetching alumni list:', error);
+    throw error;
+  }
+};
+
+export const getAlumniDetails = async (userId: number) => {
+  try {
+    const response = await api.get(`/api/alumni/${userId}/`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching alumni details:', error);
     throw error;
   }
 };
@@ -191,6 +246,17 @@ export const getPosts = async () => {
     return response.data.posts || []; 
   } catch (error) {
     console.error('Error fetching posts:', error);
+    throw error;
+  }
+};
+
+// New: Get posts by user account type
+export const getPostsByUserType = async (userType: 'peso' | 'admin') => {
+  try {
+    const response = await api.get(`/api/posts/by-user-type/?user_type=${userType}`);
+    return response.data.posts || []; 
+  } catch (error) {
+    console.error('Error fetching posts by user type:', error);
     throw error;
   }
 };
@@ -295,6 +361,27 @@ export const deleteRepost = async (repostId: number) => {
   }
 };
 
+// Lists for post interactions
+export const getPostLikes = async (postId: number) => {
+  try {
+    const response = await api.get(`/api/posts/${postId}/likes/`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching post likes:', error);
+    throw error;
+  }
+};
+
+export const getPostReposts = async (postId: number) => {
+  try {
+    const response = await api.get(`/api/posts/${postId}/reposts/`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching post reposts:', error);
+    throw error;
+  }
+};
+
 export const updateProfile = async (bio: string, profile_pic: string) => {
   try {
     const response = await api.put('/api/profile/update/', { bio, profile_pic });
@@ -304,3 +391,38 @@ export const updateProfile = async (bio: string, profile_pic: string) => {
     throw error;
   }
 }; 
+
+// Preferred: multipart profile update compatible with backend DRF (file upload)
+export const updateAlumniProfile = async (params: { bio?: string; imageUri?: string }) => {
+  try {
+    const meRaw = await SecureStore.getItemAsync('user');
+    const me = meRaw ? JSON.parse(meRaw) : null;
+    const userId = me?.id || me?.user_id;
+    if (!userId) throw new Error('Missing user id');
+    const form = new FormData();
+    if (typeof params.bio === 'string') {
+      form.append('bio', params.bio);
+    }
+    if (params.imageUri) {
+      // React Native FormData file object
+      form.append('profile_pic', {
+        uri: params.imageUri,
+        name: 'profile.jpg',
+        type: 'image/jpeg',
+      } as any);
+    }
+    const response = await api.put(`/api/alumni/profile/update/?user_id=${userId}`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const updated = response.data?.user || {};
+    // Persist to local user cache
+    if (me) {
+      const merged = { ...me, profile_bio: updated.bio ?? me.profile_bio, profile_pic: updated.profile_pic ?? me.profile_pic, name: updated.name ?? me.name };
+      await SecureStore.setItemAsync('user', JSON.stringify(merged));
+    }
+    return updated;
+  } catch (error) {
+    console.error('Error updating alumni profile (multipart):', error);
+    throw error;
+  }
+};
