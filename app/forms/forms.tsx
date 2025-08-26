@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+
 import type { RadioButtonProps } from 'react-native-radio-buttons-group';
 import RadioGroup from 'react-native-radio-buttons-group';
 // @ts-ignore
@@ -149,28 +150,8 @@ export default function TrackerForm() {
 
   // Submit form with API integration (multipart to match backend expectations)
   const handleSubmit = async () => {
+    setSubmitting(true);
     try {
-
-      setSubmitting(true); // Add this line
-      
-      const user = await getUserInfo();
-      const formData = {
-        user_id: user.id,
-        answers: JSON.stringify(form),
-        submitted_at: new Date().toISOString(),
-      };
-      
-      console.log('Submitting:', formData);
-      await submitTrackerResponse(formData);
-      Alert.alert('Success', 'Form submitted successfully!');
-      
-      // Navigate back after success
-      navigation.goBack();
-    } catch (error) {
-      console.error('Submit error:', error);
-      Alert.alert('Error', 'Failed to submit form');
-      setSubmitting(true);
-
       const user = await getUserInfo();
 
       // Build answers map (align keys with web labels where possible)
@@ -207,7 +188,7 @@ export default function TrackerForm() {
         'Further Study University': form.postGradUniv,
         'Further Study Total Units': form.totalUnits,
         'Unemployment Reasons': Object.keys(unemploymentReasons)
-          .filter(k => (unemploymentReasons as any)[k] === true && k !== 'otherText'),
+          .filter((k) => (unemploymentReasons as any)[k] === true && k !== 'otherText'),
         'Unemployment Other': unemploymentReasons.otherText,
       };
 
@@ -220,26 +201,27 @@ export default function TrackerForm() {
         try {
           // Use a synthetic question id "9999" for generic uploads
           fd.append('answers', JSON.stringify({ ...answers, ['9999']: { type: 'file' } }));
-          fd.append('file_9999', {
-            uri: form.file.uri,
-            name: form.file.name,
-            type: form.file.mimeType || 'application/octet-stream',
-          } as any);
+          fd.append(
+            'file_9999',
+            {
+              uri: form.file.uri,
+              name: form.file.name,
+              type: form.file.mimeType || 'application/octet-stream',
+            } as any
+          );
         } catch {}
       }
 
-      try {
-        console.log('Submitting tracker (multipart) for user:', user.id);
-        await submitTrackerResponse(fd);
-        Alert.alert('Success', 'Form submitted successfully!');
-        navigation.goBack();
-      } catch (error: any) {
-        const serverMsg = error?.response?.data?.message || error?.message || 'Failed to submit form';
-        console.error('Submit error:', serverMsg, error?.response?.data);
-        Alert.alert('Error', String(serverMsg));
-      }
+      console.log('Submitting tracker (multipart) for user:', user.id);
+      await submitTrackerResponse(fd);
+      Alert.alert('Success', 'Form submitted successfully!');
+      navigation.goBack();
+    } catch (error: any) {
+      const serverMsg = error?.response?.data?.message || error?.message || 'Failed to submit form';
+      console.error('Submit error:', serverMsg, error?.response?.data);
+      Alert.alert('Error', String(serverMsg));
     } finally {
-      setSubmitting(false); // Add this line
+      setSubmitting(false);
     }
   };
 
@@ -332,6 +314,7 @@ export default function TrackerForm() {
         <View style={styles.dropdownContainer}>
           <TouchableOpacity style={styles.dropdown} onPress={() => setShowCourseDropdown(!showCourseDropdown)}>
             <Text style={{ color: form.courseGraduated ? '#222' : '#aaa' }}>{form.courseGraduated || 'Select your course'}</Text>
+
             <FontAwesome name="chevron-down" size={16} color="#222" style={{ marginLeft: 175 }} />
             <FontAwesome name="chevron-down" size={16} color="#222" style={{ marginLeft: 250 }} />
           </TouchableOpacity>
