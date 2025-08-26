@@ -1,62 +1,34 @@
 import React, { useState } from 'react';
-import { View, TextInput, TouchableOpacity, Text, StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Modal } from 'react-native';
+import { View, TextInput, TouchableOpacity, Text, StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { loginUser } from '../services/api';
 import { useRouter } from 'expo-router';
 
 export default function LoginScreen() {
   const [ctuId, setCtuId] = useState('');
-  const [birthdate, setBirthdate] = useState('');
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const formatDateInput = (text: string) => {
-    // Remove all non-digits
-    const cleaned = text.replace(/\D/g, '');
-    
-    // Format as MM/DD/YYYY
-    if (cleaned.length <= 2) {
-      return cleaned;
-    } else if (cleaned.length <= 4) {
-      return `${cleaned.slice(0, 2)}/${cleaned.slice(2)}`;
-    } else if (cleaned.length <= 8) {
-      return `${cleaned.slice(0, 2)}/${cleaned.slice(2, 4)}/${cleaned.slice(4, 8)}`;
-    } else {
-      return `${cleaned.slice(0, 2)}/${cleaned.slice(2, 4)}/${cleaned.slice(4, 8)}`;
-    }
-  };
-
-  const handleDateChange = (text: string) => {
-    const formatted = formatDateInput(text);
-    setBirthdate(formatted);
-    clearError();
-  };
+  // Remove all birthdate logic
 
   const handleLogin = async () => {
-    if (!ctuId.trim() || !birthdate.trim()) {
+    if (!ctuId.trim() || !password.trim()) {
       setError('Please fill in all fields');
       return;
     }
     setError('');
     setLoading(true);
     try {
-      // Convert MM/DD/YYYY to YYYY-MM-DD for API
-      const parts = birthdate.split('/');
-      if (parts.length === 3) {
-        const apiDate = `${parts[2]}-${parts[0]}-${parts[1]}`;
-        const data = await loginUser(ctuId.trim(), apiDate);
-        if (data.user && data.user.account_type && data.user.account_type.user) {
-          router.replace('/dashboard');
-        } else {
-          setError('Only alumni accounts can access the mobile app');
-        }
+      const data = await loginUser(ctuId.trim(), password);
+      if (data.user && data.user.account_type && data.user.account_type.user) {
+        router.replace('/dashboard');
       } else {
-        setError('Please enter a valid date');
+        setError('Only alumni accounts can access the mobile app');
       }
     } catch (e: any) {
       if (e.response?.status === 401) {
-        setError('Invalid CTU ID or birthdate');
+        setError('Invalid CTU ID or password');
       } else if (e.response?.status === 400) {
         setError('Please check your input format');
       } else {
@@ -72,51 +44,14 @@ export default function LoginScreen() {
     if (error) setError('');
   };
 
-  const DatePickerModal = () => (
-    <Modal
-      visible={showDatePicker}
-      transparent={true}
-      animationType="slide"
-      onRequestClose={() => setShowDatePicker(false)}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Select Birthdate</Text>
-          <Text style={styles.modalSubtitle}>Enter your birthdate in MM/DD/YYYY format</Text>
-          <TextInput
-            style={styles.modalInput}
-            placeholder="MM/DD/YYYY"
-            value={birthdate}
-            onChangeText={handleDateChange}
-            keyboardType="numeric"
-            maxLength={10}
-          />
-          <View style={styles.modalButtons}>
-            <TouchableOpacity
-              style={styles.modalButton}
-              onPress={() => setShowDatePicker(false)}
-            >
-              <Text style={styles.modalButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modalButton, styles.modalButtonPrimary]}
-              onPress={() => setShowDatePicker(false)}
-            >
-              <Text style={[styles.modalButtonText, styles.modalButtonTextPrimary]}>Done</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-
   return (
     <KeyboardAvoidingView 
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.content}>
-        <Text style={styles.title}>Welcome{'\n'}Technologist</Text>
+        <Text style={styles.title}>Welcome{'
+'}Technologist</Text>
         <Text style={styles.subtitle}>Connect & Collaborate</Text>
         <View style={styles.form}>
           <Text style={styles.label}>CTU ID</Text>
@@ -132,26 +67,18 @@ export default function LoginScreen() {
             autoCorrect={false}
             editable={!loading}
           />
-          <Text style={styles.label}>Birthdate</Text>
-          <View style={styles.dateInputContainer}>
-            <TextInput
-              style={[styles.dateInput, error && styles.inputError]}
-              placeholder="MM/DD/YYYY"
-              value={birthdate}
-              onChangeText={handleDateChange}
-              keyboardType="numeric"
-              maxLength={10}
-              editable={!loading}
-            />
-            <TouchableOpacity
-              style={styles.calendarIcon}
-              onPress={() => setShowDatePicker(true)}
-              disabled={loading}
-            >
-              <Text style={styles.calendarIconText}>📅</Text>
-            </TouchableOpacity>
-          </View>
-          <DatePickerModal />
+          <Text style={styles.label}>Password</Text>
+          <TextInput
+            style={[styles.input, error && styles.inputError]}
+            placeholder="Enter your password"
+            value={password}
+            onChangeText={(text) => {
+              setPassword(text);
+              clearError();
+            }}
+            secureTextEntry
+            editable={!loading}
+          />
           {error ? (
             <View style={styles.errorContainer}>
               <Text style={styles.errorText}>{error}</Text>
