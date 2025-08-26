@@ -1,24 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import * as DocumentPicker from 'expo-document-picker';
+import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
+  ActivityIndicator,
+  Alert,
+  Platform,
   ScrollView,
   StyleSheet,
+  Text,
+  TextInput,
   TouchableOpacity,
-  Platform,
-  Alert,
-  ActivityIndicator,
+  View,
 } from 'react-native';
-import * as DocumentPicker from 'expo-document-picker';
-import RadioGroup from 'react-native-radio-buttons-group';
+
 import type { RadioButtonProps } from 'react-native-radio-buttons-group';
+import RadioGroup from 'react-native-radio-buttons-group';
 // @ts-ignore
-import type {} from 'expo-document-picker';
-import type {} from 'react-native-radio-buttons-group';
-import { useNavigation } from '@react-navigation/native';
 import { FontAwesome } from '@expo/vector-icons';
-import { getTrackerQuestions, getUserInfo, submitTrackerResponse, getAlumniDetails } from '../../services/api';
+import { useNavigation } from '@react-navigation/native';
+import type { } from 'expo-document-picker';
+import type { } from 'react-native-radio-buttons-group';
+import { getAlumniDetails, getTrackerQuestions, getUserInfo, submitTrackerResponse } from '../../services/api';
 
 type FileAsset = {
   name: string;
@@ -149,9 +150,8 @@ export default function TrackerForm() {
 
   // Submit form with API integration (multipart to match backend expectations)
   const handleSubmit = async () => {
+    setSubmitting(true);
     try {
-      setSubmitting(true);
-
       const user = await getUserInfo();
 
       // Build answers map (align keys with web labels where possible)
@@ -188,7 +188,7 @@ export default function TrackerForm() {
         'Further Study University': form.postGradUniv,
         'Further Study Total Units': form.totalUnits,
         'Unemployment Reasons': Object.keys(unemploymentReasons)
-          .filter(k => (unemploymentReasons as any)[k] === true && k !== 'otherText'),
+          .filter((k) => (unemploymentReasons as any)[k] === true && k !== 'otherText'),
         'Unemployment Other': unemploymentReasons.otherText,
       };
 
@@ -201,12 +201,14 @@ export default function TrackerForm() {
         try {
           // Use a synthetic question id "9999" for generic uploads
           fd.append('answers', JSON.stringify({ ...answers, ['9999']: { type: 'file' } }));
-          fd.append('file_9999', {
-            // @ts-ignore - React Native FormData file descriptor
-            uri: form.file.uri,
-            name: form.file.name,
-            type: form.file.mimeType || 'application/octet-stream',
-          });
+          fd.append(
+            'file_9999',
+            {
+              uri: form.file.uri,
+              name: form.file.name,
+              type: form.file.mimeType || 'application/octet-stream',
+            } as any
+          );
         } catch {}
       }
 
@@ -312,6 +314,8 @@ export default function TrackerForm() {
         <View style={styles.dropdownContainer}>
           <TouchableOpacity style={styles.dropdown} onPress={() => setShowCourseDropdown(!showCourseDropdown)}>
             <Text style={{ color: form.courseGraduated ? '#222' : '#aaa' }}>{form.courseGraduated || 'Select your course'}</Text>
+
+            <FontAwesome name="chevron-down" size={16} color="#222" style={{ marginLeft: 175 }} />
             <FontAwesome name="chevron-down" size={16} color="#222" style={{ marginLeft: 250 }} />
           </TouchableOpacity>
           {showCourseDropdown && (
