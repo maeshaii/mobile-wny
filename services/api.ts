@@ -11,9 +11,7 @@ function normalizeBaseUrl(raw?: string): string {
 const rawFromExpo = (Constants.expoConfig?.extra as any)?.API_BASE_URL as string | undefined;
 const rawFromEnv = process.env.API_BASE_URL;
 
-export const API_BASE_URL = normalizeBaseUrl(
-  rawFromExpo || rawFromEnv || 'http://192.168.1.225:8000'
-);
+export const API_BASE_URL = normalizeBaseUrl('https://560d686ec9d1.ngrok-free.app');
 
 console.log('Mobile API base URL:', JSON.stringify(API_BASE_URL));
 
@@ -110,28 +108,48 @@ api.interceptors.response.use(
   }
 );
 
-/** Auth API */
+/** Auth API - UNIFIED WITH WEB FRONTEND */
 export const loginUser = async (acc_username: string, acc_password: string) => {
+  console.log('Mobile: Sending login request:', { acc_username, acc_password });
   try {
-    const { data } = await api.post('/api/token/', { acc_username, acc_password });
-    if (data?.access && data?.refresh) {
-      await SecureStore.setItemAsync('accessToken', data.access);
-      await SecureStore.setItemAsync('refreshToken', data.refresh);
-      if (data.user) await SecureStore.setItemAsync('user', JSON.stringify(data.user));
+    const response = await api.post('/api/token/', { acc_username, acc_password });
+    console.log('Mobile: Login response received:', response.data);
+    
+    // Save tokens and user info to SecureStore (mobile equivalent of localStorage)
+    if (response.data.access && response.data.refresh) {
+      await SecureStore.setItemAsync('accessToken', response.data.access);
+      await SecureStore.setItemAsync('refreshToken', response.data.refresh);
+      if (response.data.user) {
+        await SecureStore.setItemAsync('user', JSON.stringify(response.data.user));
+      }
     }
-    return data;
+    
+    return { success: true, ...response.data };
   } catch (error: any) {
-    console.log('Axios details:', {
-      message: error?.message,
-      code: error?.code,
-      urlTried: `${API_BASE_URL}/api/token/`,
-      isAxiosError: !!error?.isAxiosError,
-      hasResponse: !!error?.response,
-      hasRequest: !!error?.request,
-      status: error?.response?.status,
-      data: error?.response?.data,
+    console.error('Mobile: Login error details:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      message: error.message,
+      config: {
+        url: error.config?.url,
+        method: error.config?.method,
+        headers: error.config?.headers
+      }
     });
-    throw error;
+    
+    // Provide more specific error messages (SAME AS WEB)
+    if (error.response?.status === 400) {
+      return { success: false, message: 'Invalid credentials or request format' };
+    } else if (error.response?.status === 500) {
+      return { success: false, message: 'Server error - please try again later' };
+    } else if (error.code === 'ERR_NETWORK') {
+      return { success: false, message: 'Network error - check your connection' };
+    } else if (error.response?.status === 0) {
+      return { success: false, message: 'CORS error - backend may not be running' };
+    }
+    
+    return { success: false, message: 'Login failed - please try again' };
   }
 };
 
