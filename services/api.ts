@@ -89,7 +89,7 @@ api.interceptors.response.use(
           return api(original);
         } catch (e) {
           await runQueuedRequests(null);
-          await logoutUser();
+        await logoutUser();
           return Promise.reject(e);
         } finally {
           isRefreshing = false;
@@ -169,8 +169,8 @@ export const getTrackerQuestions = async () => (await api.get('/api/tracker/ques
 export const submitTrackerResponse = async (payload: FormData | any) => {
   const isFormData = typeof FormData !== 'undefined' && payload instanceof FormData;
   const { data } = await api.post('/api/tracker/responses/', payload, {
-    headers: isFormData ? { 'Content-Type': 'multipart/form-data' } : undefined,
-  });
+      headers: isFormData ? { 'Content-Type': 'multipart/form-data' } : undefined,
+    });
   return data;
 };
 export const checkUserTrackerStatus = async () =>
@@ -200,6 +200,17 @@ export const commentOnPost = async (postId: number, comment: string) =>
   (await api.post(`/api/posts/${postId}/comments/`, { comment_content: comment })).data;
 export const getPostComments = async (postId: number) =>
   (await api.get(`/api/posts/${postId}/comments/`)).data;
+export const getPostLikes = async (postId: number) =>
+  (await api.get(`/api/posts/${postId}/likes/`)).data;
+export const getPostReposts = async (postId: number) => {
+  try {
+    const { data } = await api.get(`/api/posts/${postId}/reposts/`);
+    return data;
+  } catch (error) {
+    console.error('Error fetching post reposts:', error);
+    throw error;
+  }
+};
 export const deletePost = async (postId: number) =>
   (await api.delete(`/api/posts/${postId}/`)).data;
 
@@ -243,6 +254,18 @@ export const updateAlumniProfile = async (params: { bio?: string; imageUri?: str
       await SecureStore.setItemAsync('user', JSON.stringify(merged));
     }
     return updated;
+};
+
+export const getSuggestedUsers = async () => {
+  try {
+    const user = await getUserInfo();
+    const currentUserId = user?.id || user?.user_id;
+    const { data } = await api.get(`/api/users_list_view/?current_user_id=${currentUserId}`);
+    return data;
+  } catch (error) {
+    console.error('Error fetching suggested users:', error);
+    throw error;
+  }
 };
 
 export default api;

@@ -1,9 +1,9 @@
 import { FontAwesome } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View, } from 'react-native';
 import NavBar from '../(tabs)/navbar';
-import { API_BASE_URL, commentOnPost, getPosts, getUserInfo, likePost, logoutUser, repostPost, unlikePost } from '../../services/api';
+import { API_BASE_URL, checkFollowStatus, commentOnPost, followUser, getPostLikes, getPostReposts, getPosts, getSuggestedUsers, getUserInfo, likePost, logoutUser, repostPost, unlikePost } from '../../services/api';
 
 interface Post {
   post_id: number;
@@ -32,6 +32,14 @@ interface UserInfo {
   year_graduated?: number;
 }
 
+function initials(fname?: string, lname?: string) {
+  const a = (fname || '').trim();
+  const b = (lname || '').trim();
+  const i1 = a ? a[0] : '';
+  const i2 = b ? b[0] : '';
+  return (i1 + i2 || 'U').toUpperCase();
+}
+
 const HomeScreen = () => {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -41,13 +49,29 @@ const HomeScreen = () => {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editData, setEditData] = useState({ name: '', course: '', year_graduated: '', profile_pic: '' });
   const [commentModalVisible, setCommentModalVisible] = useState(false);
+  const [likesModalVisible, setLikesModalVisible] = useState(false);
+  const [likesLoading, setLikesLoading] = useState(false);
+  const [likesList, setLikesList] = useState<{ user_id: number; f_name: string; l_name: string; profile_pic?: string }[]>([]);
+  const [repostsModalVisible, setRepostsModalVisible] = useState(false);
+  const [repostsLoading, setRepostsLoading] = useState(false);
+  const [repostsList, setRepostsList] = useState<{ user_id: number; f_name: string; l_name: string; profile_pic?: string }[]>([]);
   const [selectedPostId, setSelectedPostId] = useState<number | null>(null);
   const [commentText, setCommentText] = useState('');
+  const [peopleYouMayKnowVisible, setPeopleYouMayKnowVisible] = useState(false);
+  const [suggestedUsers, setSuggestedUsers] = useState<any[]>([]);
+  const [followLoading, setFollowLoading] = useState<{ [key: number]: boolean }>({});
   const router = useRouter();
 
   useEffect(() => {
     loadUserInfo();
     loadPosts();
+    // Show "People you may know" popup randomly (80% chance for testing)
+    const shouldShowPopup = Math.random() < 0.8;
+    if (shouldShowPopup) {
+      setTimeout(() => {
+        loadSuggestedUsers();
+      }, 3000); // Show after 3 seconds
+    }
   }, []);
 
   const loadUserInfo = async () => {
@@ -86,6 +110,59 @@ const HomeScreen = () => {
     }
   };
 
+  const loadSuggestedUsers = async () => {
+    try {
+      const data = await getSuggestedUsers();
+      if (data.success && data.users.length > 0) {
+        // Filter out users that the current user is already following
+        const usersWithFollowStatus = await Promise.all(
+          data.users.map(async (user: any) => {
+            try {
+              const followStatus = await checkFollowStatus(user.id);
+              return { ...user, isFollowing: followStatus.is_following };
+            } catch {
+              return { ...user, isFollowing: false };
+            }
+          })
+        );
+        const unfollowedUsers = usersWithFollowStatus.filter((user: any) => !user.isFollowing);
+        if (unfollowedUsers.length > 0) {
+          setSuggestedUsers(unfollowedUsers.slice(0, 3)); // Show max 3 users
+          setPeopleYouMayKnowVisible(true);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading suggested users:', error);
+    }
+  };
+
+  const handleFollow = async (userId: number) => {
+    setFollowLoading(prev => ({ ...prev, [userId]: true }));
+    try {
+      const result = await followUser(userId);
+      if (result.success) {
+        // Remove the user from the suggested list
+        setSuggestedUsers(prev => prev.filter(u => u.id !== userId));
+        if (suggestedUsers.length <= 1) {
+          setPeopleYouMayKnowVisible(false);
+        }
+      }
+    } catch (error) {
+      console.error('Error following user:', error);
+      Alert.alert('Error', 'Failed to follow user. Please try again.');
+    } finally {
+      setFollowLoading(prev => ({ ...prev, [userId]: false }));
+    }
+  };
+
+  const handleRemove = (userId: number) => {
+    // Remove the user from the suggested list without following
+    setSuggestedUsers(prev => prev.filter(u => u.id !== userId));
+    if (suggestedUsers.length <= 1) {
+      setPeopleYouMayKnowVisible(false);
+    }
+  };
+
   const handleLikePost = async (postId: number, isLiked: boolean) => {
     try {
       if (isLiked) {
@@ -113,9 +190,38 @@ const HomeScreen = () => {
     }
   };
 
-  const handleComment = async (postId: number) => {
-    setSelectedPostId(postId);
-    setCommentModalVisible(true);
+  const handleOpenLikes = async (postId: number) => {
+    try {
+      setLikesLoading(true);
+      setLikesModalVisible(true);
+      const data = await getPostLikes(postId);
+      const arr = Array.isArray(data?.likes) ? data.likes : [];
+      setLikesList(arr);
+    } catch (error) {
+      console.error('Error loading likes list:', error);
+      setLikesList([]);
+    } finally {
+      setLikesLoading(false);
+    }
+  };
+
+  const handleOpenReposts = async (postId: number) => {
+    try {
+      setRepostsLoading(true);
+      setRepostsModalVisible(true);
+      const data = await getPostReposts(postId);
+      const arr = Array.isArray(data?.reposts) ? data.reposts : [];
+      setRepostsList(arr);
+    } catch (error) {
+      console.error('Error loading reposts list:', error);
+      setRepostsList([]);
+    } finally {
+      setRepostsLoading(false);
+    }
+  };
+
+  const handleComment = (postId: number) => {
+    router.push({ pathname: '/posts/comments', params: { postId: String(postId) } });
   };
 
   const submitComment = async () => {
@@ -218,6 +324,12 @@ const HomeScreen = () => {
       {/* Header with logout button */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Home</Text>
+        <TouchableOpacity 
+          style={styles.testButton}
+          onPress={() => loadSuggestedUsers()}
+        >
+          <Text style={styles.testButtonText}>Test Popup</Text>
+        </TouchableOpacity>
       </View>
 
 
@@ -302,13 +414,13 @@ const HomeScreen = () => {
                 )}
 
             <View style={styles.actionsCountsRow}>
-              <TouchableOpacity onPress={() => router.push({ pathname: '/posts/likes', params: { postId: String(post.post_id) } })}>
+              <TouchableOpacity onPress={() => handleOpenLikes(post.post_id)}>
                 <Text style={styles.countText}>{likeCount} {likeCount === 1 ? 'like' : 'likes'}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => router.push({ pathname: '/posts/comments', params: { postId: String(post.post_id) } })}>
                 <Text style={styles.countText}>{commentCount} {commentCount === 1 ? 'comment' : 'comments'}</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => router.push({ pathname: '/posts/reposts', params: { postId: String(post.post_id) } })}>
+              <TouchableOpacity onPress={() => handleOpenReposts(post.post_id)}>
                 <Text style={styles.countText}>{repostCount} {repostCount === 1 ? 'share' : 'shares'}</Text>
               </TouchableOpacity>
             </View>
@@ -376,6 +488,224 @@ const HomeScreen = () => {
                   <Text style={{ color: '#1e3a8a' }}>Cancel</Text>
                 </TouchableOpacity>
               </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Likes Modal */}
+        <Modal visible={likesModalVisible} transparent animationType="fade">
+        <TouchableWithoutFeedback
+          onPress={() => {
+            setLikesModalVisible(false);
+            setLikesList([]);
+          }}
+        >
+          <View style={styles.modalBackdrop} />
+        </TouchableWithoutFeedback>
+
+        <View style={styles.modalCenterWrap} pointerEvents="box-none">
+          <View style={styles.likesSheet}>
+            {/* header */}
+            <View style={styles.likesHeader}>
+              <Text style={styles.likesTitle}>Likes</Text>
+              <TouchableOpacity
+                style={styles.likesCloseBtn}
+                onPress={() => {
+                  setLikesModalVisible(false);
+                  setLikesList([]);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Close likes"
+              >
+                <Text style={styles.likesCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* content */}
+            {likesLoading ? (
+              <View style={styles.likesLoadingWrap}>
+                <ActivityIndicator size="small" color="#1e3a8a" />
+                <Text style={styles.likesLoadingText}>Loading…</Text>
+              </View>
+            ) : likesList.length === 0 ? (
+              <View style={styles.likesEmptyWrap}>
+                <Text style={styles.likesEmptyText}>No likes yet</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={likesList}
+                keyExtractor={(item) => String(item.user_id)}
+                style={{ alignSelf: 'stretch', maxHeight: 320 }}
+                ItemSeparatorComponent={() => <View style={styles.likesSeparator} />}
+                renderItem={({ item }) => {
+                  const full = `${item.f_name || ''} ${item.l_name || ''}`.trim() || 'User';
+                  const src =
+                    item.profile_pic &&
+                    (String(item.profile_pic).startsWith('http') ||
+                      String(item.profile_pic).startsWith('data:'))
+                      ? { uri: String(item.profile_pic) }
+                      : item.profile_pic
+                      ? { uri: `${API_BASE_URL}${item.profile_pic}` }
+                      : null;
+
+                  return (
+                    <View style={styles.likesRow}>
+                      {src ? (
+                        <Image source={src} style={styles.likesAvatar} />
+                      ) : (
+                        <View style={[styles.likesAvatar, styles.likesAvatarFallback]}>
+                          <Text style={styles.likesAvatarFallbackText}>
+                            {initials(item.f_name, item.l_name)}
+                          </Text>
+                        </View>
+                      )}
+                      <Text style={styles.likesName} numberOfLines={1}>
+                        {full}
+                      </Text>
+                    </View>
+                  );
+                }}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Reposts Modal */}
+      <Modal visible={repostsModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {/* header */}
+            <View style={styles.likesHeader}>
+              <Text style={styles.likesTitle}>Reposts</Text>
+              <TouchableOpacity
+                style={styles.likesCloseBtn}
+                onPress={() => setRepostsModalVisible(false)}
+              >
+                <Text style={styles.likesCloseText}>✕</Text>
+
+      {/* People You May Know Modal */}
+      <Modal visible={peopleYouMayKnowVisible} transparent animationType="fade">
+        <TouchableWithoutFeedback
+          onPress={() => setPeopleYouMayKnowVisible(false)}
+        >
+          <View style={styles.modalBackdrop} />
+        </TouchableWithoutFeedback>
+
+        <View style={styles.modalCenterWrap} pointerEvents="box-none">
+          <View style={styles.peopleYouMayKnowSheet}>
+            {/* header */}
+            <View style={styles.peopleYouMayKnowHeader}>
+              <Text style={styles.peopleYouMayKnowTitle}>People you may know</Text>
+              <TouchableOpacity
+                style={styles.peopleYouMayKnowCloseBtn}
+                onPress={() => setPeopleYouMayKnowVisible(false)}
+              >
+                <Text style={styles.peopleYouMayKnowCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* content */}
+            <View style={styles.peopleYouMayKnowContent}>
+              {suggestedUsers.map((user) => (
+                <View key={user.id} style={styles.suggestedUserCard}>
+                  <Image
+                    source={{
+                      uri: user.profile_pic
+                        ? (String(user.profile_pic).startsWith('http') || String(user.profile_pic).startsWith('data:'))
+                          ? user.profile_pic
+                          : `${API_BASE_URL}${user.profile_pic}`
+                        : 'https://via.placeholder.com/60x60?text=U'
+                    }}
+                    style={styles.suggestedUserAvatar}
+                  />
+                  <View style={styles.suggestedUserInfo}>
+                    <Text style={styles.suggestedUserName}>{user.name}</Text>
+                    <View style={styles.mutualFriendsRow}>
+                      <View style={styles.mutualFriendsAvatars}>
+                        <View style={styles.mutualAvatar}>
+                          <FontAwesome name="user" size={12} color="#666" />
+                        </View>
+                        <View style={styles.mutualAvatar}>
+                          <FontAwesome name="user" size={12} color="#666" />
+                        </View>
+                      </View>
+                      <Text style={styles.mutualFriendsText}>5 mutual friends</Text>
+                    </View>
+                  </View>
+                  <View style={styles.suggestedUserActions}>
+                    <TouchableOpacity
+                      style={styles.followButton}
+                      onPress={() => handleFollow(user.id)}
+                      disabled={followLoading[user.id]}
+                    >
+                      <FontAwesome name="user-plus" size={14} color="#fff" />
+                      <Text style={styles.followButtonText}>
+                        {followLoading[user.id] ? '...' : 'Follow'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.removeButton}
+                      onPress={() => handleRemove(user.id)}
+                    >
+                      <Text style={styles.removeButtonText}>Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
+              </TouchableOpacity>
+            </View>
+
+            {/* content */}
+            {repostsLoading ? (
+              <View style={styles.likesLoadingWrap}>
+                <ActivityIndicator size="small" color="#1e3a8a" />
+                <Text style={styles.likesLoadingText}>Loading…</Text>
+              </View>
+            ) : repostsList.length === 0 ? (
+              <View style={styles.likesEmptyWrap}>
+                <Text style={styles.likesEmptyText}>No reposts yet</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={repostsList}
+                keyExtractor={(item) => String(item.user_id)}
+                style={{ alignSelf: 'stretch', maxHeight: 320 }}
+                ItemSeparatorComponent={() => <View style={styles.likesSeparator} />}
+                renderItem={({ item }) => {
+                  const full = `${item.f_name || ''} ${item.l_name || ''}`.trim() || 'User';
+                  const src =
+                    item.profile_pic &&
+                    (String(item.profile_pic).startsWith('http') ||
+                      String(item.profile_pic).startsWith('data:'))
+                      ? { uri: String(item.profile_pic) }
+                      : item.profile_pic
+                      ? { uri: `${API_BASE_URL}${item.profile_pic}` }
+                      : null;
+
+                  return (
+                    <View style={styles.likesRow}>
+                      {src ? (
+                        <Image source={src} style={styles.likesAvatar} />
+                      ) : (
+                        <View style={[styles.likesAvatar, styles.likesAvatarFallback]}>
+                          <Text style={styles.likesAvatarFallbackText}>
+                            {initials(item.f_name, item.l_name)}
+                          </Text>
+                        </View>
+                      )}
+                      <Text style={styles.likesName} numberOfLines={1}>
+                        {full}
+                      </Text>
+                    </View>
+                  );
+                }}
+              />
+            )}
             </View>
           </View>
         </Modal>
@@ -505,6 +835,17 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#333',
+  },
+  testButton: {
+    backgroundColor: '#1e3a8a',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  testButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
   },
   logoutButton: {
     padding: 8,
@@ -710,5 +1051,225 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(17, 24, 39, 0.45)', // slate-900/45
+  },
+  modalCenterWrap: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+  },
+  likesSheet: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  likesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e5e7eb',
+  },
+  likesTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  likesCloseBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  likesCloseText: {
+    fontSize: 18,
+    color: '#334155',
+  },
+  likesLoadingWrap: {
+    alignSelf: 'stretch',
+    minHeight: 160,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  likesLoadingText: {
+    marginTop: 8,
+    color: '#334155',
+    fontSize: 13,
+  },
+  likesEmptyWrap: {
+    alignSelf: 'stretch',
+    minHeight: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  likesEmptyText: {
+    color: '#64748b',
+    fontSize: 14,
+  },
+  likesSeparator: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#e5e7eb',
+    marginLeft: 56, // align under text, not under avatar
+  },
+  likesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  likesAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+    backgroundColor: '#e5e7eb',
+  },
+  likesAvatarFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  likesAvatarFallbackText: {
+    color: '#1e293b',
+    fontWeight: '700',
+  },
+  likesName: {
+    fontSize: 14,
+    color: '#0f172a',
+    flex: 1,
+  },
+  likesFooter: {
+    paddingTop: 10,
+  },
+  likesPrimaryBtn: {
+    backgroundColor: '#1e3a8a',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  likesPrimaryBtnText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  peopleYouMayKnowSheet: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  peopleYouMayKnowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e5e7eb',
+  },
+  peopleYouMayKnowTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  peopleYouMayKnowCloseBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  peopleYouMayKnowCloseText: {
+    fontSize: 18,
+    color: '#334155',
+  },
+  peopleYouMayKnowContent: {
+    paddingTop: 12,
+  },
+  suggestedUserCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  suggestedUserAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 12,
+  },
+  suggestedUserInfo: {
+    flex: 1,
+  },
+  suggestedUserName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  mutualFriendsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  mutualFriendsAvatars: {
+    flexDirection: 'row',
+    marginRight: 8,
+  },
+  mutualAvatar: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: -4,
+    borderWidth: 1,
+    borderColor: '#fff',
+  },
+  mutualFriendsText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  suggestedUserActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  followButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1e3a8a',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    gap: 4,
+  },
+  followButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  removeButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    backgroundColor: '#f0f0f0',
+  },
+  removeButtonText: {
+    color: '#666',
+    fontSize: 12,
   },
 });
