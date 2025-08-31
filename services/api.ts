@@ -11,7 +11,7 @@ function normalizeBaseUrl(raw?: string): string {
 const rawFromExpo = (Constants.expoConfig?.extra as any)?.API_BASE_URL as string | undefined;
 const rawFromEnv = process.env.API_BASE_URL;
 
-export const API_BASE_URL = normalizeBaseUrl('https://560d686ec9d1.ngrok-free.app');
+export const API_BASE_URL = normalizeBaseUrl(rawFromExpo || rawFromEnv || 'http://localhost:8000');
 
 console.log('Mobile API base URL:', JSON.stringify(API_BASE_URL));
 
