@@ -1,15 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Modal, TextInput, Image } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getUserInfo, logoutUser, getPosts } from '../services/api';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { followUser, getPosts, getSuggestedUsers, getUserInfo, logoutUser } from '../services/api';
 
 export default function DashboardScreen() {
   const [user, setUser] = useState<any>(null);
   const [posts, setPosts] = useState<any[]>([]);
+  const [suggestedUsers, setSuggestedUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editData, setEditData] = useState({ name: '', course: '', year_graduated: '', profile_pic: '' });
+  const [followLoading, setFollowLoading] = useState<{ [key: number]: boolean }>({});
   const router = useRouter();
 
   useEffect(() => {
@@ -19,9 +21,10 @@ export default function DashboardScreen() {
   const loadUserInfo = async () => {
     try {
       setLoading(true);
-      const [userInfo, postsData] = await Promise.all([
+      const [userInfo, postsData, suggestedData] = await Promise.all([
         getUserInfo(),
-        getPosts()
+        getPosts(),
+        getSuggestedUsers()
       ]);
       
       if (userInfo) {
@@ -37,6 +40,11 @@ export default function DashboardScreen() {
       }
       
       setPosts(postsData || []);
+      
+      // Set suggested users (limit to 3 for preview)
+      if (suggestedData.success) {
+        setSuggestedUsers(suggestedData.users.slice(0, 3));
+      }
     } catch (err) {
       setError('Failed to load user information');
       console.error('Error loading user info:', err);
@@ -76,6 +84,23 @@ export default function DashboardScreen() {
     setUser(user ? { ...user, ...editData } : editData);
     setEditModalVisible(false);
     Alert.alert('Profile updated (not saved to backend)');
+  };
+
+  const handleFollow = async (userId: number) => {
+    setFollowLoading(prev => ({ ...prev, [userId]: true }));
+    try {
+      const result = await followUser(userId);
+      if (result.success) {
+        // Remove the user from the suggested list
+        setSuggestedUsers(prev => prev.filter(u => u.id !== userId));
+        Alert.alert('Success', 'You are now following this user!');
+      }
+    } catch (error) {
+      console.error('Error following user:', error);
+      Alert.alert('Error', 'Failed to follow user. Please try again.');
+    } finally {
+      setFollowLoading(prev => ({ ...prev, [userId]: false }));
+    }
   };
 
   if (loading) {
@@ -177,6 +202,54 @@ export default function DashboardScreen() {
           <Text style={styles.welcomeText}>Welcome back, {user.name}!</Text>
         </View>
       )}
+
+      {/* People you may know */}
+      <View style={styles.peopleYouMayKnowCard}>
+        <View style={styles.peopleYouMayKnowHeader}>
+          <Text style={styles.peopleYouMayKnowTitle}>People you may know</Text>
+          <TouchableOpacity 
+            style={styles.peopleYouMayKnowButton}
+            onPress={() => router.push('/peopleyoumayknow/people-you-may-know')}
+          >
+            <Text style={styles.peopleYouMayKnowButtonText}>See All</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.peopleYouMayKnowSubtitle}>Discover and connect with other alumni</Text>
+        
+        {suggestedUsers.length > 0 ? (
+          <View style={styles.suggestedUsersPreview}>
+            {suggestedUsers.map((user) => (
+              <View key={user.id} style={styles.suggestedUserItem}>
+                <Image
+                  source={{
+                    uri: user.profile_pic
+                      ? (String(user.profile_pic).startsWith('http') || String(user.profile_pic).startsWith('data:'))
+                        ? user.profile_pic
+                        : `http://192.168.1.225:8000${user.profile_pic}`
+                      : 'https://via.placeholder.com/40x40?text=U'
+                  }}
+                  style={styles.suggestedUserAvatar}
+                />
+                <View style={styles.suggestedUserInfo}>
+                  <Text style={styles.suggestedUserName}>{user.name}</Text>
+                  <Text style={styles.suggestedUserBatch}>{user.batch ? `Batch ${user.batch}` : ''}</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.suggestedUserFollowButton}
+                  onPress={() => handleFollow(user.id)}
+                  disabled={followLoading[user.id]}
+                >
+                  <Text style={styles.suggestedUserFollowButtonText}>
+                    {followLoading[user.id] ? '...' : 'Follow'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.noSuggestedUsersText}>No suggestions available</Text>
+        )}
+      </View>
 
       {/* Start a Post */}
       <View style={styles.startPostCard}>
@@ -521,5 +594,90 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderWidth: 1,
     borderColor: '#e9ecef',
+  },
+  peopleYouMayKnowCard: {
+    backgroundColor: 'white',
+    borderRadius: 10,
+    padding: 15,
+    marginHorizontal: 10,
+    marginTop: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  peopleYouMayKnowHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  peopleYouMayKnowTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#174f84',
+  },
+  peopleYouMayKnowButton: {
+    backgroundColor: '#1e3a8a',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  peopleYouMayKnowButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  peopleYouMayKnowSubtitle: {
+    fontSize: 14,
+    color: '#666',
+  },
+  suggestedUsersPreview: {
+    marginTop: 12,
+  },
+  suggestedUserItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  suggestedUserAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+  },
+  suggestedUserInfo: {
+    flex: 1,
+  },
+  suggestedUserName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  suggestedUserBatch: {
+    fontSize: 12,
+    color: '#666',
+  },
+  suggestedUserFollowButton: {
+    backgroundColor: '#1e3a8a',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  suggestedUserFollowButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  noSuggestedUsersText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 12,
+    fontStyle: 'italic',
   },
 }); 

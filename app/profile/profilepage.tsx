@@ -1,10 +1,10 @@
 import { FontAwesome } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 // @ts-ignore
 import * as ImagePicker from 'expo-image-picker';
-import { API_BASE_URL, checkFollowStatus, fetchFollowers, followUser, getAlumniDetails, getPosts, getUserInfo, unfollowUser, updateAlumniProfile } from '../../services/api';
+import { API_BASE_URL, checkFollowStatus, fetchFollowers, followUser, getAlumniDetails, getPostLikes, getPostReposts, getPosts, getUserInfo, likePost, repostPost, unfollowUser, unlikePost, updateAlumniProfile } from '../../services/api';
 
 const profilePic = require('../../assets/images/sample_pic.jpg');
 
@@ -34,6 +34,12 @@ export default function ProfilePage() {
   const [newPhotoUri, setNewPhotoUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [currentProfilePicUri, setCurrentProfilePicUri] = useState<string | null>(null);
+  const [likesModalVisible, setLikesModalVisible] = useState(false);
+  const [likesLoading, setLikesLoading] = useState(false);
+  const [likesList, setLikesList] = useState<{ user_id: number; f_name: string; l_name: string; profile_pic?: string }[]>([]);
+  const [repostsModalVisible, setRepostsModalVisible] = useState(false);
+  const [repostsLoading, setRepostsLoading] = useState(false);
+  const [repostsList, setRepostsList] = useState<{ user_id: number; f_name: string; l_name: string; profile_pic?: string }[]>([]);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -101,6 +107,98 @@ export default function ProfilePage() {
       </View>
     );
   }
+
+  // Post action handlers
+  const handleLikePost = async (postId: number, isLiked: boolean) => {
+    try {
+      if (isLiked) {
+        await unlikePost(postId);
+      } else {
+        await likePost(postId);
+      }
+      // Refresh posts to update like status
+      const me = await getUserInfo();
+      const viewingOwn = !viewUserId || (me && (me.id === viewUserId || me.user_id === viewUserId));
+      if (viewingOwn) {
+        const [postsData] = await Promise.all([getPosts()]);
+        const userId = me?.id || me?.user_id;
+        const userPosts = (postsData || []).filter((p: any) => p.user?.user_id === userId);
+        setPosts(userPosts);
+      } else {
+        if (!viewUserId) return;
+        const [postsData] = await Promise.all([getPosts()]);
+        const userPosts = (postsData || []).filter((p: any) => p.user?.user_id === viewUserId);
+        setPosts(userPosts);
+      }
+    } catch (error) {
+      console.error('Error toggling like:', error);
+    }
+  };
+
+  const handleComment = (postId: number) => {
+    router.push({ pathname: '/posts/comments', params: { postId: String(postId) } });
+  };
+
+  const handleRepost = async (postId: number) => {
+    try {
+      await repostPost(postId);
+      // Refresh posts to update repost count
+      const me = await getUserInfo();
+      const viewingOwn = !viewUserId || (me && (me.id === viewUserId || me.user_id === viewUserId));
+      if (viewingOwn) {
+        const [postsData] = await Promise.all([getPosts()]);
+        const userId = me?.id || me?.user_id;
+        const userPosts = (postsData || []).filter((p: any) => p.user?.user_id === userId);
+        setPosts(userPosts);
+      } else {
+        if (!viewUserId) return;
+        const [postsData] = await Promise.all([getPosts()]);
+        const userPosts = (postsData || []).filter((p: any) => p.user?.user_id === viewUserId);
+        setPosts(userPosts);
+      }
+    } catch (error) {
+      console.error('Error reposting:', error);
+    }
+  };
+
+  const handleOpenLikes = async (postId: number) => {
+    try {
+      setLikesLoading(true);
+      setLikesModalVisible(true);
+      const data = await getPostLikes(postId);
+      const arr = Array.isArray(data?.likes) ? data.likes : [];
+      setLikesList(arr);
+    } catch (error) {
+      console.error('Error loading likes list:', error);
+      setLikesList([]);
+    } finally {
+      setLikesLoading(false);
+    }
+  };
+
+  const handleOpenReposts = async (postId: number) => {
+    try {
+      setRepostsLoading(true);
+      setRepostsModalVisible(true);
+      const data = await getPostReposts(postId);
+      const arr = Array.isArray(data?.reposts) ? data.reposts : [];
+      setRepostsList(arr);
+    } catch (error) {
+      console.error('Error loading reposts list:', error);
+      setRepostsList([]);
+    } finally {
+      setRepostsLoading(false);
+    }
+  };
+
+  // Helper function for user initials
+  const initials = (fname?: string, lname?: string) => {
+    const a = (fname || '').trim();
+    const b = (lname || '').trim();
+    const i1 = a ? a[0] : '';
+    const i2 = b ? b[0] : '';
+    return (i1 + i2 || 'U').toUpperCase();
+  };
 
   return (
     <ScrollView style={styles.scrollContainer} contentContainerStyle={{ flexGrow: 1 }}>
@@ -207,18 +305,43 @@ export default function ProfilePage() {
             {post.post_image && (
               <Image source={{ uri: (String(post.post_image).startsWith('http') || String(post.post_image).startsWith('data:')) ? String(post.post_image) : `${API_BASE_URL}${post.post_image}` }} style={styles.postImage} />
             )}
-            <View style={styles.postActions}>
-              <TouchableOpacity style={styles.actionBtn}>
-                <FontAwesome name="thumbs-o-up" size={16} color="#888" />
-                <Text style={styles.actionText}>{post.likes_count || 0}</Text>
+            <View style={styles.actionsCountsRow}>
+              <TouchableOpacity onPress={() => handleOpenLikes(post.post_id)}>
+                <Text style={styles.countText}>{post.likes_count || 0} {post.likes_count === 1 ? 'like' : 'likes'}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.actionBtn}>
-                <FontAwesome name="comment-o" size={16} color="#888" />
-                <Text style={styles.actionText}>{post.comments_count || 0}</Text>
+              <TouchableOpacity onPress={() => router.push({ pathname: '/posts/comments', params: { postId: String(post.post_id) } })}>
+                <Text style={styles.countText}>{post.comments_count || 0} {post.comments_count === 1 ? 'comment' : 'comments'}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.actionBtn}>
-                <FontAwesome name="retweet" size={16} color="#888" />
-                <Text style={styles.actionText}>{post.reposts_count || 0}</Text>
+              <TouchableOpacity onPress={() => handleOpenReposts(post.post_id)}>
+                <Text style={styles.countText}>{post.reposts_count || 0} {post.reposts_count === 1 ? 'share' : 'shares'}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.actions}>
+              <TouchableOpacity 
+                style={styles.actionIcon}
+                onPress={() => handleLikePost(post.post_id, post.is_liked)}
+              >
+                <FontAwesome 
+                  name={post.is_liked ? 'thumbs-up' : 'thumbs-o-up'} 
+                  size={18} 
+                  color={post.is_liked ? '#1e3a8a' : '#555'} 
+                />
+                <Text style={[styles.actionText, post.is_liked && styles.likedText]}>Like</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.actionIcon}
+                onPress={() => handleComment(post.post_id)}
+              >
+                <FontAwesome name="comment-o" size={18} color="#555" />
+                <Text style={styles.actionText}>Comment</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.actionIcon}
+                onPress={() => handleRepost(post.post_id)}
+              >
+                <FontAwesome name="retweet" size={18} color="#555" />
+                <Text style={styles.actionText}>Share</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -321,10 +444,168 @@ export default function ProfilePage() {
             </View>
           </View>
         </View>
-      </Modal>
-    </ScrollView>
-  );
-}
+              </Modal>
+
+        {/* Likes Modal */}
+        <Modal visible={likesModalVisible} transparent animationType="fade">
+          <TouchableWithoutFeedback
+            onPress={() => {
+              setLikesModalVisible(false);
+              setLikesList([]);
+            }}
+          >
+            <View style={styles.modalBackdrop} />
+          </TouchableWithoutFeedback>
+
+          <View style={styles.modalCenterWrap} pointerEvents="box-none">
+            <View style={styles.likesSheet}>
+              {/* header */}
+              <View style={styles.likesHeader}>
+                <Text style={styles.likesTitle}>Likes</Text>
+                <TouchableOpacity
+                  style={styles.likesCloseBtn}
+                  onPress={() => {
+                    setLikesModalVisible(false);
+                    setLikesList([]);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close likes"
+                >
+                  <Text style={styles.likesCloseText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* content */}
+              {likesLoading ? (
+                <View style={styles.likesLoadingWrap}>
+                  <ActivityIndicator size="small" color="#1e3a8a" />
+                  <Text style={styles.likesLoadingText}>Loading…</Text>
+                </View>
+              ) : likesList.length === 0 ? (
+                <View style={styles.likesEmptyWrap}>
+                  <Text style={styles.likesEmptyText}>No likes yet</Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={likesList}
+                  keyExtractor={(item) => String(item.user_id)}
+                  style={{ alignSelf: 'stretch', maxHeight: 320 }}
+                  ItemSeparatorComponent={() => <View style={styles.likesSeparator} />}
+                  renderItem={({ item }) => {
+                    const full = `${item.f_name || ''} ${item.l_name || ''}`.trim() || 'User';
+                    const src =
+                      item.profile_pic &&
+                      (String(item.profile_pic).startsWith('http') ||
+                        String(item.profile_pic).startsWith('data:'))
+                        ? { uri: String(item.profile_pic) }
+                        : item.profile_pic
+                        ? { uri: `${API_BASE_URL}${item.profile_pic}` }
+                        : null;
+
+                    return (
+                      <View style={styles.likesRow}>
+                        {src ? (
+                          <Image source={src} style={styles.likesAvatar} />
+                        ) : (
+                          <View style={[styles.likesAvatar, styles.likesAvatarFallback]}>
+                            <Text style={styles.likesAvatarFallbackText}>
+                              {initials(item.f_name, item.l_name)}
+                            </Text>
+                          </View>
+                        )}
+                        <Text style={styles.likesName} numberOfLines={1}>
+                          {full}
+                        </Text>
+                      </View>
+                    );
+                  }}
+                />
+              )}
+            </View>
+          </View>
+        </Modal>
+
+        {/* Reposts Modal */}
+        <Modal visible={repostsModalVisible} transparent animationType="fade">
+          <TouchableWithoutFeedback
+            onPress={() => {
+              setRepostsModalVisible(false);
+              setRepostsList([]);
+            }}
+          >
+            <View style={styles.modalBackdrop} />
+          </TouchableWithoutFeedback>
+
+          <View style={styles.modalCenterWrap} pointerEvents="box-none">
+            <View style={styles.likesSheet}>
+              {/* header */}
+              <View style={styles.likesHeader}>
+                <Text style={styles.likesTitle}>Reposts</Text>
+                <TouchableOpacity
+                  style={styles.likesCloseBtn}
+                  onPress={() => {
+                    setRepostsModalVisible(false);
+                    setRepostsList([]);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close reposts"
+                >
+                  <Text style={styles.likesCloseText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* content */}
+              {repostsLoading ? (
+                <View style={styles.likesLoadingWrap}>
+                  <ActivityIndicator size="small" color="#1e3a8a" />
+                  <Text style={styles.likesLoadingText}>Loading…</Text>
+                </View>
+              ) : repostsList.length === 0 ? (
+                <View style={styles.likesEmptyWrap}>
+                  <Text style={styles.likesEmptyText}>No reposts yet</Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={repostsList}
+                  keyExtractor={(item) => String(item.user_id)}
+                  style={{ alignSelf: 'stretch', maxHeight: 320 }}
+                  ItemSeparatorComponent={() => <View style={styles.likesSeparator} />}
+                  renderItem={({ item }) => {
+                    const full = `${item.f_name || ''} ${item.l_name || ''}`.trim() || 'User';
+                    const src =
+                      item.profile_pic &&
+                      (String(item.profile_pic).startsWith('http') ||
+                        String(item.profile_pic).startsWith('data:'))
+                        ? { uri: String(item.profile_pic) }
+                        : item.profile_pic
+                        ? { uri: `${API_BASE_URL}${item.profile_pic}` }
+                        : null;
+
+                    return (
+                      <View style={styles.likesRow}>
+                        {src ? (
+                          <Image source={src} style={styles.likesAvatar} />
+                        ) : (
+                          <View style={[styles.likesAvatar, styles.likesAvatarFallback]}>
+                            <Text style={styles.likesAvatarFallbackText}>
+                              {initials(item.f_name, item.l_name)}
+                            </Text>
+                          </View>
+                        )}
+                        <Text style={styles.likesName} numberOfLines={1}>
+                          {full}
+                        </Text>
+                      </View>
+                    );
+                  }}
+                />
+              )}
+            </View>
+          </View>
+        </Modal>
+      </ScrollView>
+    );
+  }
 
 const styles = StyleSheet.create({
   scrollContainer: {
@@ -527,8 +808,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   actionText: {
-    fontSize: 13,
-    color: '#888',
+    fontSize: 12,
+    color: '#555',
     marginLeft: 4,
   },
   modalOverlay: {
@@ -642,5 +923,126 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginTop: 10,
     marginBottom: 10,
+  },
+  actionsCountsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  countText: {
+    fontSize: 14,
+    color: '#888',
+  },
+  actions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    paddingTop: 8,
+  },
+  actionIcon: {
+    alignItems: 'center',
+  },
+  likedText: {
+    color: '#1e3a8a',
+    fontWeight: 'bold',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(17, 24, 39, 0.45)',
+  },
+  modalCenterWrap: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+  },
+  likesSheet: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  likesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e5e7eb',
+  },
+  likesTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  likesCloseBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  likesCloseText: {
+    fontSize: 18,
+    color: '#334155',
+  },
+  likesLoadingWrap: {
+    alignSelf: 'stretch',
+    minHeight: 160,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  likesLoadingText: {
+    marginTop: 8,
+    color: '#334155',
+    fontSize: 13,
+  },
+  likesEmptyWrap: {
+    alignSelf: 'stretch',
+    minHeight: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  likesEmptyText: {
+    color: '#64748b',
+    fontSize: 14,
+  },
+  likesSeparator: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#e5e7eb',
+    marginLeft: 56,
+  },
+  likesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  likesAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+    backgroundColor: '#e5e7eb',
+  },
+  likesAvatarFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  likesAvatarFallbackText: {
+    color: '#1e293b',
+    fontWeight: '700',
+  },
+  likesName: {
+    fontSize: 14,
+    color: '#0f172a',
+    flex: 1,
   },
 });
